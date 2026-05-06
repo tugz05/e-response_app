@@ -7,10 +7,10 @@ class DrawerHeaderContent extends StatelessWidget {
 
 
   const DrawerHeaderContent({
-    Key? key,
+    super.key,
     required this.name,
     required this.email,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

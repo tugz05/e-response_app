@@ -1,44 +1,68 @@
-import 'dart:convert';
 import 'dart:io';
+
 import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../helpers/account_session.dart';
 import '../helpers/api_url.dart';
 
 class ImageUploadService {
-
-  
-
-  Future<void> uploadImages(String id, File idImage, File selfieImage) async {
+  /// Uploads ID + selfie. On HTTP 200, marks account as **pending admin review**
+  /// so routing shows [VerifyAccountScreen] instead of document upload again.
+  ///
+  /// Copies images into app documents so profile avatars still work after temp
+  /// cache paths from the picker are cleared.
+  Future<bool> uploadImages(String id, File idImage, File selfieImage) async {
     try {
-      String _apiUrl = ApiUrl.getServiceUrl("api/v1/valid-images/$id");
-      var request = http.MultipartRequest('POST', Uri.parse(_apiUrl));
-      
-      request.files.add(await http.MultipartFile.fromPath('img_valid_id', idImage.path));
-      request.files.add(await http.MultipartFile.fromPath('img_selfie', selfieImage.path));
-      
+      final String apiUrl = ApiUrl.getServiceUrl('api/v1/valid-images/$id');
+      final request = http.MultipartRequest('POST', Uri.parse(apiUrl));
+
+      request.files.add(
+        await http.MultipartFile.fromPath('img_valid_id', idImage.path),
+      );
+      request.files.add(
+        await http.MultipartFile.fromPath('img_selfie', selfieImage.path),
+      );
+
       request.headers.addAll({
         'Accept': 'application/json',
-        'Content-Type': 'multipart/form-data'
+        'Content-Type': 'multipart/form-data',
       });
-      
-      var response = await request.send();
-      
+
+      final response = await request.send();
+
       if (response.statusCode == 200) {
-        print("Upload successful");
-        await _saveImagePaths(idImage.path, selfieImage.path);
-      } else {
-        print("Upload failed with status: ${response.statusCode}");
+        await _persistVerificationImagesLocal(idImage, selfieImage);
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool(
+          AccountSession.prefsKeyVerificationDocsSubmitted,
+          true,
+        );
+        await prefs.setString(
+          AccountSession.prefsKeyAccountStatus,
+          'pending_verification',
+        );
+        return true;
       }
-    } catch (e) {
-      print("Error uploading images: $e");
+      return false;
+    } catch (_) {
+      return false;
     }
   }
 
-  Future<void> _saveImagePaths(String idImagePath, String selfieImagePath) async {
+  Future<void> _persistVerificationImagesLocal(
+    File idImage,
+    File selfieImage,
+  ) async {
+    final dir = await getApplicationDocumentsDirectory();
+    final idDest = File('${dir.path}/verification_id.jpg');
+    final selfieDest = File('${dir.path}/verification_selfie.jpg');
+    await idImage.copy(idDest.path);
+    await selfieImage.copy(selfieDest.path);
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('img_valid_id', idImagePath);
-    await prefs.setString('img_selfie', selfieImagePath);
+    await prefs.setString('img_valid_id', idDest.path);
+    await prefs.setString('img_selfie', selfieDest.path);
   }
 
   Future<Map<String, String?>> getSavedImages() async {

@@ -76,7 +76,8 @@ class _ListNewsDashboardState extends State<ListNewsDashboard> {
         final String dateLabel = contentDateLabel(
           item['created_at']?.toString(),
         );
-        final String? imageUrl = item['bg_image']?.toString();
+        final itemMap = Map<String, dynamic>.from(item as Map);
+        final String? imageUrl = contentItemImageUrl(itemMap);
 
         return Padding(
           padding: EdgeInsets.only(bottom: index == itemCount - 1 ? 0 : 12),

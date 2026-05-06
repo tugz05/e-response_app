@@ -1,11 +1,15 @@
 import 'dart:async';
 import 'dart:ui';
 
+import 'package:e_response_app_nemsu/helpers/account_session.dart';
 import 'package:e_response_app_nemsu/helpers/logout.dart';
 import 'package:e_response_app_nemsu/routes/route_manager.dart';
-import 'package:e_response_app_nemsu/services/shared_preferences/SharedPreferencesService.dart';
 import 'package:e_response_app_nemsu/services/twilio_service.dart';
+import 'package:e_response_app_nemsu/services/shared_preferences/SharedPreferencesService.dart';
+import 'package:e_response_app_nemsu/helpers/app_mobile_role.dart';
+import 'package:e_response_app_nemsu/views/authenticated-layout/staff/staff_app_shell.dart';
 import 'package:e_response_app_nemsu/theme/app_theme.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:e_response_app_nemsu/views/authenticated-layout/pages/dashboard.dart';
 import 'package:e_response_app_nemsu/views/authenticated-layout/pages/pages.dart';
 import 'package:e_response_app_nemsu/views/authenticated-layout/pages/tips.dart';
@@ -29,13 +33,18 @@ class _MyAppState extends State<MyApp> {
   Timer? _inactivityTimer;
   int _currentIndex = 0;
   bool _isExpanded = false;
-  late final List<Widget> _pages;
-  late final List<_NavItemData> _navItems;
+  AppMobileRole _role = AppMobileRole.citizen;
+  List<Widget> _pages = [];
+  List<_NavItemData> _navItems = [];
 
   @override
   void initState() {
     super.initState();
-    _initializePages();
+    _syncPagesWithRole(AppMobileRole.citizen);
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      AccountSession.guardAuthenticatedShell(context);
+      await _reloadStoredAppRole();
+    });
     _loadCredentials();
     _resetInactivityTimer();
   }
@@ -47,8 +56,9 @@ class _MyAppState extends State<MyApp> {
   }
 
   Future<void> _loadCredentials() async {
-    await _prefsService.getCredentials();
-    await TwilioService().init();
+    final creds = await _prefsService.getCredentials();
+    final token = creds['token'];
+    await TwilioService().init(bearerToken: token);
   }
 
   void _resetInactivityTimer() {
@@ -58,7 +68,30 @@ class _MyAppState extends State<MyApp> {
     });
   }
 
-  void _initializePages() {
+  Future<void> _reloadStoredAppRole() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) {
+      return;
+    }
+    final role = AppMobileRole.fromPrefs(prefs);
+    setState(() {
+      _syncPagesWithRole(role);
+      if (role.canAccessIncidentWorkspace) {
+        _currentIndex = 0;
+      } else {
+        _currentIndex = _currentIndex.clamp(0, _pages.length - 1);
+      }
+    });
+  }
+
+  void _syncPagesWithRole(AppMobileRole role) {
+    _role = role;
+    final responderWorkspace = role.canAccessIncidentWorkspace;
+    if (responderWorkspace) {
+      _pages = [];
+      _navItems = [];
+      return;
+    }
     _pages = [
       const Dashboard(),
       const Pages(
@@ -71,23 +104,23 @@ class _MyAppState extends State<MyApp> {
       const TipsPage(),
       const UserPage(),
     ];
-    _navItems = const [
-      _NavItemData(
+    _navItems = [
+      const _NavItemData(
         label: 'Home',
         icon: Icons.home_outlined,
         selectedIcon: Icons.home_rounded,
       ),
-      _NavItemData(
+      const _NavItemData(
         label: 'News',
         icon: Icons.newspaper_outlined,
         selectedIcon: Icons.newspaper_rounded,
       ),
-      _NavItemData(
+      const _NavItemData(
         label: 'Tips',
         icon: Icons.lightbulb_outline_rounded,
         selectedIcon: Icons.lightbulb_rounded,
       ),
-      _NavItemData(
+      const _NavItemData(
         label: 'Profile',
         icon: Icons.person_outline_rounded,
         selectedIcon: Icons.person_rounded,
@@ -97,6 +130,14 @@ class _MyAppState extends State<MyApp> {
 
   @override
   Widget build(BuildContext context) {
+    if (_role.canAccessIncidentWorkspace) {
+      return GestureDetector(
+        onTap: _resetInactivityTimer,
+        onPanDown: (_) => _resetInactivityTimer(),
+        child: StaffAppShell(onUserActivity: _resetInactivityTimer),
+      );
+    }
+
     return GestureDetector(
       onTap: _resetInactivityTimer,
       onPanDown: (_) => _resetInactivityTimer(),

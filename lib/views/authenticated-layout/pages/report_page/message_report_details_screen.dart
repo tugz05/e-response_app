@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'ambulance_confirmation_screen.dart';
 
 class MessageReportDetailsScreen extends StatelessWidget {
+  const MessageReportDetailsScreen({super.key});
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(

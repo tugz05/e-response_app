@@ -3,7 +3,7 @@ import 'package:e_response_app_nemsu/theme/app_theme.dart';
 
 class VTextHeader extends StatelessWidget {
   final String text;
-  const VTextHeader({Key? key, required this.text}) : super(key: key);
+  const VTextHeader({super.key, required this.text});
 
   @override
   Widget build(BuildContext context) {

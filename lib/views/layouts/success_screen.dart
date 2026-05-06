@@ -24,7 +24,14 @@ class _SuccessScreenState extends State<SuccessScreen> {
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (_seconds == 1) {
         timer.cancel();
-        Navigator.pushNamed(context, RouteManager.loginPage);
+        if (!mounted) {
+          return;
+        }
+        Navigator.pushNamedAndRemoveUntil(
+          context,
+          RouteManager.for_verification_screen,
+          (route) => false,
+        );
       } else {
         setState(() {
           _seconds--;
@@ -41,7 +48,11 @@ class _SuccessScreenState extends State<SuccessScreen> {
 
   void _manualContinue() {
     _timer.cancel(); // Cancel timer if user taps "Continue"
-    Navigator.pushNamed(context, RouteManager.loginPage);
+    Navigator.pushNamedAndRemoveUntil(
+      context,
+      RouteManager.for_verification_screen,
+      (route) => false,
+    );
   }
 
   @override

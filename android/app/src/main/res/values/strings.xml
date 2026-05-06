@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Required for google_sign_in on Android (Credential Manager).
+         Google Cloud Console → APIs & Credentials → create OAuth client type
+         "Web application" → paste that client ID here (ends with .apps.googleusercontent.com).
+         Laravel should verify id_tokens against this same Web client ID.
+         Alternatively omit this and pass GOOGLE_SERVER_CLIENT_ID / GoogleSignInConfig in Dart. -->
+    <string name="default_web_client_id" translatable="false">490198227720-9ld91f0ggs9g70bjgcd1h8j8t2h5ii6n.apps.googleusercontent.com</string>
+</resources>

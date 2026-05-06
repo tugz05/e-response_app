@@ -3,6 +3,8 @@ import 'package:e_response_app_nemsu/theme/app_theme.dart';
 import 'package:shimmer/shimmer.dart';
 
 class NewsCardLoading extends StatelessWidget {
+  const NewsCardLoading({super.key});
+
   @override
   Widget build(BuildContext context) {
     return Shimmer.fromColors(

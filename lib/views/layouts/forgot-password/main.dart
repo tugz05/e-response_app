@@ -61,35 +61,46 @@ void _sendOTP() async {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Center(
-        child: Column(
-          children: [
-            VLogo(),
-            SizedBox(height: 30),
-            VCaption(
-              header: 'Forgot Password',
-              text:
-                  'Please enter your registered email or phone number and we’ll send your verification code',
-            ),
-            SizedBox(height: 50),
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 30),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 480),
               child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  VTextField(
-                    controller: _controller,
-                    hintText: "Email/Phone",
+                  const VLogo(),
+                  const SizedBox(height: 24),
+                  VCaption(
+                    header: 'Forgot Password',
+                    text:
+                        'Please enter your registered email or phone number and we’ll send your verification code',
                   ),
-                  SizedBox(height: 30),
-                  VButton(
-                    isLoading: _isLoading, // Set loading state
-                    onPressed: _isLoading ? () {} : _sendOTP,
-                    text: "Send Verification Code",
+                  const SizedBox(height: 28),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: Column(
+                      children: [
+                        VTextField(
+                          controller: _controller,
+                          hintText: "Email/Phone",
+                        ),
+                        const SizedBox(height: 24),
+                        VButton(
+                          isLoading: _isLoading, // Set loading state
+                          onPressed: _isLoading ? () {} : _sendOTP,
+                          text: "Send Verification Code",
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
             ),
-          ],
+          ),
         ),
       ),
     );

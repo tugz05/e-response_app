@@ -1,5 +1,11 @@
 import 'package:e_response_app_nemsu/controllers/VTextFieldController.dart';
+import 'package:e_response_app_nemsu/helpers/account_session.dart';
+import 'package:e_response_app_nemsu/helpers/app_mobile_role.dart';
+import 'package:e_response_app_nemsu/helpers/google_profile_names.dart';
+import 'package:e_response_app_nemsu/helpers/google_sign_in_support.dart';
+import 'package:e_response_app_nemsu/helpers/login_payload.dart';
 import 'package:e_response_app_nemsu/routes/route_manager.dart';
+import 'package:e_response_app_nemsu/services/google_sign_in_bootstrap.dart';
 import 'package:e_response_app_nemsu/services/login_service.dart';
 import 'package:e_response_app_nemsu/theme/app_theme.dart';
 import 'package:e_response_app_nemsu/views/components/VButton.dart';
@@ -7,7 +13,7 @@ import 'package:e_response_app_nemsu/views/components/VIconButton.dart';
 import 'package:e_response_app_nemsu/views/components/VTextField.dart';
 import 'package:e_response_app_nemsu/views/components/VlLogo.dart';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -30,20 +36,10 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   Future<void> _redirectIfAuthenticated() async {
-    final prefs = await SharedPreferences.getInstance();
-    final id = prefs.getString('id');
-    final fullname = prefs.getString('name');
-    final token = prefs.getString('token');
-
-    if (id != null &&
-        id.isNotEmpty &&
-        fullname != null &&
-        fullname.isNotEmpty &&
-        token != null &&
-        token.isNotEmpty &&
-        mounted) {
-      Navigator.pushReplacementNamed(context, RouteManager.mainPage);
+    if (!mounted) {
+      return;
     }
+    await AccountSession.replaceRouteFromStoredCredentials(context);
   }
 
   @override
@@ -76,31 +72,153 @@ class _LoginPageState extends State<LoginPage> {
       _isLoading = false;
     });
 
-    if (response['success']) {
-      final status = response['data']['data']['status'];
-      if (status == 'for_verification') {
-        Navigator.pushNamed(context, RouteManager.verificationPage);
-      } else if (status == 'pending_verification') {
-        Navigator.pushNamed(context, RouteManager.for_verification_screen);
-      } else {
-        Navigator.pushReplacementNamed(context, RouteManager.mainPage);
+    await _handleAuthResponse(response);
+  }
+
+  Future<void> _handleAuthResponse(Map<String, dynamic> response) async {
+    try {
+      if (response['success'] == true) {
+        final outer = response['data'];
+        if (outer is! Map) {
+          _showError('Unexpected server response.');
+          return;
+        }
+        final om = Map<String, dynamic>.from(outer);
+        final innerData = om['data'];
+        final Map<String, dynamic> userPayload;
+        if (innerData is Map<String, dynamic>) {
+          userPayload = LoginPayload.userMapFromDataObject(innerData);
+        } else {
+          userPayload = LoginPayload.userMapFromDataObject(om);
+        }
+        final status =
+            AccountSession.normalizedStatusFromLoginPayload(userPayload);
+        final roleFromPayload = AppMobileRole.parse(userPayload['app_role']);
+        await AccountSession.replaceRouteForLoginStatus(
+          context,
+          status,
+          roleFromPayload: roleFromPayload,
+        );
+        return;
       }
+
+      final message =
+          response['message'] ?? 'Unable to login right now. Please try again.';
+      _showError(message.toString());
+    } catch (e) {
+      _showError('Could not process login response: $e');
+    }
+  }
+
+  Future<void> _loginWithGoogle() async {
+    if (!isGoogleSignInSupportedPlatform) {
+      _showError('Google sign-in is not available on this platform.');
       return;
     }
 
-    final message =
-        response['message'] ?? 'Unable to login right now. Please try again.';
-    _showError(message.toString());
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      await GoogleSignInBootstrap.ensureInitialized();
+
+      late final GoogleSignInAccount account;
+      try {
+        account = await GoogleSignIn.instance.authenticate(
+          scopeHint: const ['email', 'profile'],
+        );
+      } on GoogleSignInException catch (e) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _isLoading = false;
+        });
+        // Android often reports [canceled] after account pick when OAuth is wrong
+        // (SHA-1, package name, Web client ID) — was previously silent.
+        if (e.code == GoogleSignInExceptionCode.canceled ||
+            e.code == GoogleSignInExceptionCode.interrupted ||
+            e.code == GoogleSignInExceptionCode.uiUnavailable) {
+          _showError(
+            'Google sign-in did not finish. Check Web client ID (strings.xml), '
+            'debug/release SHA-1 in Google Cloud, and POST /api/v1/auth/google on your server.',
+          );
+          return;
+        }
+        if (e.code == GoogleSignInExceptionCode.clientConfigurationError ||
+            e.code == GoogleSignInExceptionCode.providerConfigurationError) {
+          _showError(
+            e.description ??
+                'Google Sign-In is misconfigured. Check Web client ID in strings.xml '
+                'and your app SHA-1 / package name in Google Cloud.',
+          );
+          return;
+        }
+        _showError(e.description ?? e.toString());
+        return;
+      }
+
+      if (!mounted) {
+        return;
+      }
+
+      final GoogleSignInAuthentication auth = account.authentication;
+      final String? idToken = auth.idToken;
+      if (idToken == null || idToken.isEmpty) {
+        setState(() {
+          _isLoading = false;
+        });
+        _showError(
+          'Could not obtain Google ID token. Set your Web OAuth client ID in '
+          'GoogleSignInConfig or pass --dart-define=GOOGLE_SERVER_CLIENT_ID=...',
+        );
+        return;
+      }
+
+      final googleParsedName =
+          GoogleParsedName.fromDisplayName(account.displayName);
+      final Map<String, dynamic> response =
+          await _loginService.loginWithGoogleIdToken(
+        idToken,
+        googleParsedName: googleParsedName,
+      );
+
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _isLoading = false;
+      });
+      await _handleAuthResponse(response);
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _isLoading = false;
+      });
+      _showError('Google sign-in failed: $e');
+    }
   }
 
   void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    final snack = SnackBar(
+      behavior: SnackBarBehavior.floating,
+      duration: Duration(seconds: message.length > 100 ? 8 : 4),
+      content: Text(message),
+    );
+    if (messenger != null) {
+      messenger.showSnackBar(snack);
+    } else {
+      debugPrint('[LoginPage] $message');
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      resizeToAvoidBottomInset: false,
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
@@ -113,7 +231,12 @@ class _LoginPageState extends State<LoginPage> {
           child: LayoutBuilder(
             builder: (context, constraints) {
               final bool isDesktop = constraints.maxWidth >= 960;
-              final bool compactHeight = constraints.maxHeight < 720;
+              // Keyboard resize shrinks maxHeight; add insets so layout mode
+              // does not flip while typing (avoids rebuilding fields / losing focus).
+              final double stableBodyHeight =
+                  constraints.maxHeight +
+                  MediaQuery.viewInsetsOf(context).bottom;
+              final bool compactHeight = stableBodyHeight < 720;
               final double padding = isDesktop ? 28 : 16;
 
               return Stack(
@@ -130,27 +253,38 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                   Padding(
                     padding: EdgeInsets.all(padding),
-                    child: Center(
+                    child: Align(
+                      alignment: Alignment.center,
                       child: ConstrainedBox(
                         constraints: const BoxConstraints(maxWidth: 1120),
-                        child:
-                            isDesktop
-                                ? _DesktopLoginShell(
+                        child: SingleChildScrollView(
+                          keyboardDismissBehavior:
+                              ScrollViewKeyboardDismissBehavior.manual,
+                          physics: const ClampingScrollPhysics(),
+                          padding: EdgeInsets.only(
+                            bottom:
+                                MediaQuery.viewInsetsOf(context).bottom + 12,
+                          ),
+                          child: isDesktop
+                              ? _DesktopLoginShell(
                                   compactHeight: compactHeight,
                                   isLoading: _isLoading,
                                   emailController: emailController,
                                   passwordController: passwordController,
                                   onLogin: _login,
+                                  onGoogleLogin: _loginWithGoogle,
                                   onShowError: _showError,
                                 )
-                                : _MobileLoginShell(
+                              : _MobileLoginShell(
                                   compactHeight: compactHeight,
                                   isLoading: _isLoading,
                                   emailController: emailController,
                                   passwordController: passwordController,
                                   onLogin: _login,
+                                  onGoogleLogin: _loginWithGoogle,
                                   onShowError: _showError,
                                 ),
+                        ),
                       ),
                     ),
                   ),
@@ -171,6 +305,7 @@ class _MobileLoginShell extends StatelessWidget {
     required this.emailController,
     required this.passwordController,
     required this.onLogin,
+    required this.onGoogleLogin,
     required this.onShowError,
   });
 
@@ -179,36 +314,38 @@ class _MobileLoginShell extends StatelessWidget {
   final VTextFieldController emailController;
   final VTextFieldController passwordController;
   final Future<void> Function() onLogin;
+  final Future<void> Function() onGoogleLogin;
   final void Function(String message) onShowError;
 
   @override
   Widget build(BuildContext context) {
-    if (compactHeight) {
-      return _LoginFormCard(
-        compactHeight: true,
-        showSocial: false,
-        isLoading: isLoading,
-        emailController: emailController,
-        passwordController: passwordController,
-        onLogin: onLogin,
-        onShowError: onShowError,
-      );
-    }
+    final double maxContent =
+        (MediaQuery.sizeOf(context).width - 32).clamp(280.0, 440.0);
 
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        const Flexible(flex: 4, child: _MobileHeroCard(compactHeight: false)),
-        const SizedBox(height: 14),
-        Flexible(
-          flex: 6,
-          child: _LoginFormCard(
-            compactHeight: false,
-            showSocial: true,
-            isLoading: isLoading,
-            emailController: emailController,
-            passwordController: passwordController,
-            onLogin: onLogin,
-            onShowError: onShowError,
+        Center(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: maxContent),
+            child: _LoginHeroCard(compact: compactHeight),
+          ),
+        ),
+        SizedBox(height: compactHeight ? 16 : 22),
+        Center(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: maxContent),
+            child: _LoginFormCard(
+              compactHeight: compactHeight,
+              showSocial: !compactHeight,
+              showHeaderLogo: false,
+              isLoading: isLoading,
+              emailController: emailController,
+              passwordController: passwordController,
+              onLogin: onLogin,
+              onGoogleLogin: onGoogleLogin,
+              onShowError: onShowError,
+            ),
           ),
         ),
       ],
@@ -223,6 +360,7 @@ class _DesktopLoginShell extends StatelessWidget {
     required this.emailController,
     required this.passwordController,
     required this.onLogin,
+    required this.onGoogleLogin,
     required this.onShowError,
   });
 
@@ -231,267 +369,183 @@ class _DesktopLoginShell extends StatelessWidget {
   final VTextFieldController emailController;
   final VTextFieldController passwordController;
   final Future<void> Function() onLogin;
+  final Future<void> Function() onGoogleLogin;
   final void Function(String message) onShowError;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(child: _DesktopHeroCard(compactHeight: compactHeight)),
-        const SizedBox(width: 20),
-        Expanded(
-          child: _LoginFormCard(
-            compactHeight: compactHeight,
-            showSocial: true,
-            isLoading: isLoading,
-            emailController: emailController,
-            passwordController: passwordController,
-            onLogin: onLogin,
-            onShowError: onShowError,
-          ),
-        ),
-      ],
-    );
-  }
-}
+    const double maxContent = 460;
 
-class _MobileHeroCard extends StatelessWidget {
-  const _MobileHeroCard({required this.compactHeight});
-
-  final bool compactHeight;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Card(
-      margin: EdgeInsets.zero,
-      clipBehavior: Clip.antiAlias,
-      child: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [AppColors.primary, AppColors.primaryAlt],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-        ),
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(
-            compactHeight ? 18 : 20,
-            compactHeight ? 18 : 20,
-            compactHeight ? 18 : 20,
-            compactHeight ? 16 : 18,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Row(
-                children: [
-                  VLogo(size: 54, topSpacing: 0),
-                ],
-              ),
-              SizedBox(height: compactHeight ? 10 : 12),
-              Text(
-                'Emergency access for fast mobile reporting.',
-                style: theme.textTheme.headlineSmall?.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w800,
-                  height: 1.08,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Log in to send reports, verify your account, and receive official emergency updates.',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: Colors.white.withValues(alpha: 0.82),
-                  height: 1.35,
-                ),
-              ),
-              const Spacer(),
-              const Row(
-                children: [
-                  Expanded(
-                    child: _HeroPill(
-                      icon: Icons.location_on_outlined,
-                      label: 'Reports',
-                    ),
-                  ),
-                  SizedBox(width: 10),
-                  Expanded(
-                    child: _HeroPill(
-                      icon: Icons.campaign_outlined,
-                      label: 'Alerts',
-                    ),
-                  ),
-                  SizedBox(width: 10),
-                  Expanded(
-                    child: _HeroPill(
-                      icon: Icons.verified_user_outlined,
-                      label: 'Access',
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
+    return Align(
+      alignment: Alignment.center,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: maxContent),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            _LoginHeroCard(compact: compactHeight),
+            const SizedBox(height: 24),
+            _LoginFormCard(
+              compactHeight: compactHeight,
+              showSocial: true,
+              showHeaderLogo: false,
+              isLoading: isLoading,
+              emailController: emailController,
+              passwordController: passwordController,
+              onLogin: onLogin,
+              onGoogleLogin: onGoogleLogin,
+              onShowError: onShowError,
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
-class _DesktopHeroCard extends StatelessWidget {
-  const _DesktopHeroCard({required this.compactHeight});
+/// Centered gradient hero above the login form.
+class _LoginHeroCard extends StatelessWidget {
+  const _LoginHeroCard({required this.compact});
 
-  final bool compactHeight;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final pad = compact ? 20.0 : 26.0;
+    final radius = BorderRadius.circular(compact ? 22 : 26);
 
-    return Card(
-      margin: EdgeInsets.zero,
+    return Material(
+      elevation: compact ? 6 : 10,
+      shadowColor: AppColors.primary.withValues(alpha: 0.35),
+      borderRadius: radius,
       clipBehavior: Clip.antiAlias,
-      child: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: radius,
+          gradient: const LinearGradient(
             colors: [AppColors.primary, AppColors.primaryAlt],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.14),
+            width: 1,
+          ),
         ),
         child: Padding(
-          padding: EdgeInsets.fromLTRB(
-            compactHeight ? 24 : 28,
-            compactHeight ? 24 : 28,
-            compactHeight ? 24 : 28,
-            compactHeight ? 20 : 24,
-          ),
+          padding: EdgeInsets.fromLTRB(pad, pad + 2, pad, pad + 4),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(11),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.2),
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.12),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Image.asset(
+                        'lib/assets/images/logo.png',
+                        width: compact ? 44 : 52,
+                        height: compact ? 44 : 52,
+                        fit: BoxFit.contain,
+                      ),
+                    ),
+                  ],
                 ),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: const Text(
-                  'Emergency Response Access',
-                  style: TextStyle(
+                SizedBox(height: compact ? 14 : 18),
+                Text(
+                  'Emergency access for fast mobile reporting',
+                  textAlign: TextAlign.center,
+                  style: (compact
+                          ? theme.textTheme.titleLarge
+                          : theme.textTheme.headlineSmall)
+                      ?.copyWith(
                     color: Colors.white,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w800,
+                    height: 1.15,
+                    letterSpacing: -0.2,
                   ),
                 ),
-              ),
-              SizedBox(height: compactHeight ? 16 : 20),
-              Text(
-                'Secure coordination for reports, alerts, and verification.',
-                style: theme.textTheme.displaySmall?.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w800,
-                  height: 1.08,
+                SizedBox(height: compact ? 8 : 10),
+                Text(
+                  'Log in to send reports, verify your account, and receive official emergency updates.',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: Colors.white.withValues(alpha: 0.9),
+                    height: 1.45,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'Access responder updates, submit urgent reports, and manage account verification from a single trusted emergency platform.',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  color: Colors.white.withValues(alpha: 0.82),
-                  height: 1.45,
-                ),
-              ),
-              SizedBox(height: compactHeight ? 18 : 24),
-              Expanded(
-                child: Container(
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(28),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.12),
+                SizedBox(height: compact ? 14 : 18),
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: const [
+                    _HeroFeatureChip(
+                      icon: Icons.location_on_outlined,
+                      label: 'Reports',
                     ),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(18),
-                    child: Column(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(20),
-                            boxShadow: const [
-                              BoxShadow(
-                                color: AppColors.shadowPrimary,
-                                blurRadius: 20,
-                                offset: Offset(0, 10),
-                              ),
-                            ],
-                          ),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 44,
-                                height: 44,
-                                decoration: BoxDecoration(
-                                  color: AppColors.primarySoft,
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
-                                child: const Icon(
-                                  Icons.shield_outlined,
-                                  color: AppColors.primary,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Text(
-                                  'Use the same portal for secure login, emergency reporting, and verification.',
-                                  style: theme.textTheme.bodyMedium?.copyWith(
-                                    color: AppColors.textPrimary,
-                                    fontWeight: FontWeight.w600,
-                                    height: 1.35,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Expanded(
-                          child: Center(
-                            child: Image.asset(
-                              'lib/assets/images/ambulance.gif',
-                              width: compactHeight ? 210 : 250,
-                              height: compactHeight ? 210 : 250,
-                            ),
-                          ),
-                        ),
-                        const Row(
-                          children: [
-                            Expanded(
-                              child: _DesktopMetric(value: 'Fast', label: 'Reports'),
-                            ),
-                            SizedBox(width: 12),
-                            Expanded(
-                              child: _DesktopMetric(value: 'Live', label: 'Alerts'),
-                            ),
-                            SizedBox(width: 12),
-                            Expanded(
-                              child: _DesktopMetric(value: 'Safe', label: 'Access'),
-                            ),
-                          ],
-                        ),
-                      ],
+                    _HeroFeatureChip(
+                      icon: Icons.campaign_outlined,
+                      label: 'Alerts',
                     ),
-                  ),
+                    _HeroFeatureChip(
+                      icon: Icons.verified_user_outlined,
+                      label: 'Access',
+                    ),
+                  ],
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
+    );
+  }
+}
+
+class _HeroFeatureChip extends StatelessWidget {
+  const _HeroFeatureChip({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.22),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: Colors.white, size: 17),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w700,
+              fontSize: 12.5,
+              letterSpacing: 0.1,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -501,19 +555,23 @@ class _LoginFormCard extends StatelessWidget {
   const _LoginFormCard({
     required this.compactHeight,
     required this.showSocial,
+    this.showHeaderLogo = true,
     required this.isLoading,
     required this.emailController,
     required this.passwordController,
     required this.onLogin,
+    required this.onGoogleLogin,
     required this.onShowError,
   });
 
   final bool compactHeight;
   final bool showSocial;
+  final bool showHeaderLogo;
   final bool isLoading;
   final VTextFieldController emailController;
   final VTextFieldController passwordController;
   final Future<void> Function() onLogin;
+  final Future<void> Function() onGoogleLogin;
   final void Function(String message) onShowError;
 
   @override
@@ -536,10 +594,12 @@ class _LoginFormCard extends StatelessWidget {
                   ? MainAxisAlignment.center
                   : MainAxisAlignment.start,
           children: [
-            Center(
-              child: VLogo(size: compactHeight ? 70 : 72, topSpacing: 0),
-            ),
-            SizedBox(height: compactHeight ? 18 : 16),
+            if (showHeaderLogo) ...[
+              Center(
+                child: VLogo(size: compactHeight ? 70 : 72, topSpacing: 0),
+              ),
+              SizedBox(height: compactHeight ? 18 : 16),
+            ],
             Text(
               'Welcome back',
               style: theme.textTheme.headlineSmall?.copyWith(
@@ -631,8 +691,11 @@ class _LoginFormCard extends StatelessWidget {
                   Expanded(
                     child: VIconButton(
                       onPressed:
-                          () =>
-                              onShowError('Google login is not implemented yet.'),
+                          isLoading
+                              ? () {}
+                              : () async {
+                                await onGoogleLogin();
+                              },
                       text: 'Google',
                       icon: 'lib/assets/svg/google.svg',
                     ),
@@ -680,78 +743,6 @@ class _LoginFormCard extends StatelessWidget {
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _HeroPill extends StatelessWidget {
-  const _HeroPill({required this.icon, required this.label});
-
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, color: Colors.white, size: 18),
-          const SizedBox(height: 6),
-          Text(
-            label,
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w700,
-              fontSize: 11,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _DesktopMetric extends StatelessWidget {
-  const _DesktopMetric({required this.value, required this.label});
-
-  final String value;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        children: [
-          Text(
-            value,
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w800,
-              fontSize: 18,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.8),
-              fontWeight: FontWeight.w600,
-              fontSize: 11,
-            ),
-          ),
-        ],
       ),
     );
   }

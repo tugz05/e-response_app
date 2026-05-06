@@ -28,17 +28,33 @@ class LocationService {
     }
 
     Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high);
-
-    print('Current Latitude: ${position.latitude}');
-    print('Current Longitude: ${position.longitude}');
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+      ),
+    );
 
     List<Placemark> placemarks =
         await placemarkFromCoordinates(position.latitude, position.longitude);
 
     if (placemarks.isNotEmpty) {
       Placemark place = placemarks[0];
-      return '${place.street}, ${place.locality}, ${place.administrativeArea}, ${place.country}';
+      final parts = <String>[
+        if (place.street != null && place.street!.trim().isNotEmpty)
+          place.street!.trim(),
+        if (place.subLocality != null && place.subLocality!.trim().isNotEmpty)
+          place.subLocality!.trim(),
+        if (place.locality != null && place.locality!.trim().isNotEmpty)
+          place.locality!.trim(),
+        if (place.administrativeArea != null &&
+            place.administrativeArea!.trim().isNotEmpty)
+          place.administrativeArea!.trim(),
+        if (place.country != null && place.country!.trim().isNotEmpty)
+          place.country!.trim(),
+      ];
+      if (parts.isEmpty) {
+        return '${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)}';
+      }
+      return parts.join(', ');
     } else {
       throw Exception('No address available for current location.');
     }

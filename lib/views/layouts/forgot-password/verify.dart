@@ -13,7 +13,7 @@ import 'package:e_response_app_nemsu/theme/app_theme.dart';
 class VerifyPage extends StatefulWidget {
   final String email;
 
-  const VerifyPage({Key? key, required this.email}) : super(key: key);
+  const VerifyPage({super.key, required this.email});
 
   @override
   _VerifyPageState createState() => _VerifyPageState();

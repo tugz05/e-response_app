@@ -1,3 +1,4 @@
+import 'package:e_response_app_nemsu/helpers/api_url.dart';
 import 'package:e_response_app_nemsu/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -28,6 +29,48 @@ String contentDateLabel(String? rawDate) {
   } catch (_) {
     return rawDate;
   }
+}
+
+/// Turns API image paths into an absolute URL for [Image.network].
+String? resolveContentImageUrl(String? raw) {
+  if (raw == null) {
+    return null;
+  }
+  final s = raw.trim();
+  if (s.isEmpty) {
+    return null;
+  }
+  final lower = s.toLowerCase();
+  if (lower.startsWith('http://') || lower.startsWith('https://')) {
+    return s;
+  }
+  if (s.startsWith('//')) {
+    return 'https:$s';
+  }
+  final base = ApiUrl.baseUrl.replaceAll(RegExp(r'/$'), '');
+  final path = s.startsWith('/') ? s : '/$s';
+  return '$base$path';
+}
+
+/// Reads common JSON keys for feed card images (news, preparedness, etc.).
+String? contentItemImageUrl(Map<String, dynamic> item) {
+  const keys = [
+    'bg_image',
+    'bgImage',
+    'image',
+    'image_url',
+    'thumbnail',
+    'thumbnail_url',
+    'cover_image',
+    'featured_image',
+  ];
+  for (final k in keys) {
+    final v = item[k]?.toString().trim();
+    if (v != null && v.isNotEmpty) {
+      return resolveContentImageUrl(v);
+    }
+  }
+  return null;
 }
 
 class ContentSectionHeader extends StatelessWidget {
@@ -85,6 +128,7 @@ class ContentHeroCard extends StatelessWidget {
     required this.badge,
     required this.highlights,
     required this.icon,
+    this.locationSection,
   });
 
   final String title;
@@ -92,6 +136,8 @@ class ContentHeroCard extends StatelessWidget {
   final String badge;
   final List<String> highlights;
   final IconData icon;
+  /// Shown between subtitle and highlight chips (e.g. current location on Home).
+  final Widget? locationSection;
 
   @override
   Widget build(BuildContext context) {
@@ -166,36 +212,42 @@ class ContentHeroCard extends StatelessWidget {
                 height: 1.4,
               ),
             ),
-            const SizedBox(height: 18),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children:
-                  highlights
-                      .map(
-                        (item) => Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 8,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(999),
-                            border: Border.all(
+            if (locationSection != null) ...[
+              const SizedBox(height: 16),
+              locationSection!,
+            ],
+            if (highlights.isNotEmpty) ...[
+              const SizedBox(height: 18),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children:
+                    highlights
+                        .map(
+                          (item) => Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
                               color: Colors.white.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(999),
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.12),
+                              ),
+                            ),
+                            child: Text(
+                              item,
+                              style: theme.textTheme.labelLarge?.copyWith(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ),
-                          child: Text(
-                            item,
-                            style: theme.textTheme.labelLarge?.copyWith(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      )
-                      .toList(),
-            ),
+                        )
+                        .toList(),
+              ),
+            ],
           ],
         ),
       ),

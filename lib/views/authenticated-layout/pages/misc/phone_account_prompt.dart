@@ -4,7 +4,7 @@ import 'package:e_response_app_nemsu/theme/app_theme.dart';
 /// A full‐screen prompt that explains why we need the Phone Account enabled.
 /// When the user taps the button, we call TwilioService.promptEnablePhoneAccount().
 class PhoneAccountPrompt extends StatelessWidget {
-  const PhoneAccountPrompt({Key? key}) : super(key: key);
+  const PhoneAccountPrompt({super.key});
 
   @override
   Widget build(BuildContext context) {

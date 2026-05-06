@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 class ProfilePage extends StatefulWidget {
-  const ProfilePage({Key? key}) : super(key: key);
+  const ProfilePage({super.key});
 
   @override
   State<ProfilePage> createState() => _ProfilePageState();
@@ -255,12 +255,12 @@ class EditableInfoRow extends StatelessWidget {
   final bool showEdit;
 
   const EditableInfoRow({
-    Key? key,
+    super.key,
     required this.label,
     required this.value,
     required this.onEdit,
     this.showEdit = true,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

@@ -33,7 +33,7 @@ class SignupService {
           "confirm_password": confirm_password,
         }),
       );
-        final SharedPreferencesService _prefsService = SharedPreferencesService();
+        final SharedPreferencesService prefsService = SharedPreferencesService();
       print(response.body);
       print(response.statusCode);
       if (response.statusCode == 200) {

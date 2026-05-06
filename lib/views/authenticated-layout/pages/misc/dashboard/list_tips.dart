@@ -7,6 +7,9 @@ import 'package:e_response_app_nemsu/views/authenticated-layout/pages/misc/webvi
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
+/// Same feed as Tips → Preparedness (`Pages` with emergency-preparedness).
+const String _kPreparednessListPath = 'api/v1/emergency-preparedness';
+
 class ListTipsDashboard extends StatefulWidget {
   const ListTipsDashboard({super.key});
 
@@ -25,7 +28,7 @@ class _ListTipsDashboardState extends State<ListTipsDashboard> {
   }
 
   Future<void> fetchTips() async {
-    final Uri url = Uri.parse(ApiUrl.getServiceUrl('api/v1/safety-tips'));
+    final Uri url = Uri.parse(ApiUrl.getServiceUrl(_kPreparednessListPath));
     if (mounted) {
       setState(() => _isLoading = true);
     }
@@ -74,9 +77,10 @@ class _ListTipsDashboardState extends State<ListTipsDashboard> {
 
     if (_tips.isEmpty) {
       return const ContentEmptyState(
-        title: 'No tips yet',
-        message: 'Preparedness reminders will show up here once available.',
-        icon: Icons.lightbulb_outline_rounded,
+        title: 'No preparedness items yet',
+        message:
+            'Emergency preparedness articles from CDRRMO will show here when published.',
+        icon: Icons.health_and_safety_outlined,
       );
     }
 
@@ -95,21 +99,25 @@ class _ListTipsDashboardState extends State<ListTipsDashboard> {
             tip['created_at']?.toString(),
           );
 
+          final tipMap = Map<String, dynamic>.from(tip as Map);
+          final String? imageUrl = contentItemImageUrl(tipMap);
+
           return SizedBox(
             width: 252,
             child: ContentFeedCard(
-              title: title.isEmpty ? 'Untitled tip' : title,
+              title: title.isEmpty ? 'Untitled article' : title,
               excerpt:
                   excerpt.isEmpty
-                      ? 'Open this tip to read the full guidance.'
+                      ? 'Open to read the full preparedness guidance.'
                       : excerpt,
               dateLabel: dateLabel,
-              icon: Icons.shield_outlined,
-              accentColor: AppColors.secondary,
+              imageUrl: imageUrl,
+              icon: Icons.health_and_safety_outlined,
+              accentColor: AppColors.primary,
               compact: true,
               onTap: () {
                 final url =
-                    '${ApiUrl.getServiceUrl('api/v1/safety-tips')}/${tip['id']}';
+                    '${ApiUrl.getServiceUrl(_kPreparednessListPath)}/${tip['id']}';
                 final cleanedUrl = url.replaceAll('api/v1/', '');
                 Navigator.push(
                   context,

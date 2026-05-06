@@ -7,6 +7,7 @@ import 'package:e_response_app_nemsu/views/components/VDropDown.dart';
 import 'package:e_response_app_nemsu/views/components/VStepIndicator.dart';
 import 'package:e_response_app_nemsu/views/components/VTextField.dart';
 import 'package:e_response_app_nemsu/views/components/VTextHeader.dart';
+import 'package:e_response_app_nemsu/views/components/address_suggestion_field.dart';
 import 'package:flutter/material.dart';
 
 class RegisterPage extends StatefulWidget {
@@ -75,6 +76,10 @@ class _RegisterPageState extends State<RegisterPage> {
     if (_passwordController.text != _confirmPasswordController.text) {
       return 'Passwords do not match.';
     }
+    final addr = _addressController.text.trim();
+    if (addr.length < 5) {
+      return 'Please enter a complete address (at least 5 characters).';
+    }
     if (!_isAgreed) {
       return 'You must agree to the terms and conditions.';
     }
@@ -142,7 +147,12 @@ class _RegisterPageState extends State<RegisterPage> {
             ),
           ),
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 26),
+            padding: EdgeInsets.fromLTRB(
+              16,
+              14,
+              16,
+              26 + MediaQuery.viewInsetsOf(context).bottom,
+            ),
             child: Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 640),
@@ -198,9 +208,9 @@ class _RegisterPageState extends State<RegisterPage> {
                                 });
                               },
                             ),
-                            VTextField(
+                            AddressSuggestionField(
                               controller: _addressController,
-                              hintText: 'House no., street, barangay, city',
+                              hintText: 'Start typing; choose a suggestion or enter manually',
                               headerText: 'Address',
                             ),
                             const SizedBox(height: 14),

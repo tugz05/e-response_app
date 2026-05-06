@@ -16,7 +16,7 @@ class VTextField extends StatefulWidget {
   final double headerBottomSpacing;
 
   const VTextField({
-    Key? key,
+    super.key,
     required this.hintText,
     this.headerText,
     this.isPassword = false,
@@ -28,7 +28,7 @@ class VTextField extends StatefulWidget {
     this.onSubmitted,
     this.topPadding = 18,
     this.headerBottomSpacing = 8,
-  }) : super(key: key);
+  });
 
   @override
   State<VTextField> createState() => _VTextFieldState();

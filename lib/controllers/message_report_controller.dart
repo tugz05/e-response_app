@@ -1,110 +1,154 @@
-import 'package:e_response_app_nemsu/routes/route_manager.dart';
+import 'dart:convert';
+
+import 'package:e_response_app_nemsu/services/location_service.dart';
+import 'package:e_response_app_nemsu/services/send_message_service.dart';
 import 'package:flutter/material.dart';
-import '../services/send_message_service.dart';
-import '../services/location_service.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:image_picker/image_picker.dart';
 
+/// Result of submitting a written report to the API.
+class MessageReportSubmitResult {
+  final bool success;
+  final String message;
+  final String? reference;
+
+  const MessageReportSubmitResult._({
+    required this.success,
+    required this.message,
+    this.reference,
+  });
+
+  factory MessageReportSubmitResult.ok({String? reference}) {
+    return MessageReportSubmitResult._(
+      success: true,
+      message: 'Your report was submitted successfully.',
+      reference: reference,
+    );
+  }
+
+  factory MessageReportSubmitResult.fail(String message) {
+    return MessageReportSubmitResult._(success: false, message: message);
+  }
+}
+
 class MessageReportController {
-  final TextEditingController locationController = TextEditingController();
   final TextEditingController detailsController = TextEditingController();
   List<String> allLocations = [];
 
-  /// Initialize the controller by fetching the current location and predefined locations.
+  void dispose() {
+    detailsController.dispose();
+  }
+
   Future<void> initialize() async {
     try {
-      // Get the current location and set it as the default.
-      String currentAddress = await LocationService.getCurrentAddress();
-      locationController.text = currentAddress;
-    } catch (e) {
-      locationController.text = 'Unable to fetch location. Please enter manually.';
-    }
-
-    try {
-      // Fetch all predefined Philippine locations.
       allLocations = await LocationService.fetchPhilippineLocations();
     } catch (e) {
-      allLocations = []; // Use an empty list if fetching fails.
+      allLocations = [];
     }
   }
 
-  /// Get location suggestions based on the user's query.
   List<String> getSuggestions(String query) {
+    if (query.trim().isEmpty) return [];
     return allLocations
-        .where((location) => location.toLowerCase().contains(query.toLowerCase()))
+        .where(
+          (location) => location.toLowerCase().contains(query.toLowerCase()),
+        )
+        .take(24)
         .toList();
   }
 
-  /// Fetch latitude and longitude for the selected address.
-Future<Map<String, dynamic>> getLocationDetails(String address) async {
-  try {
-    if (address.isEmpty) {
-      throw Exception("Address cannot be empty.");
+  Future<Map<String, dynamic>> getLocationDetails(String address) async {
+    if (address.trim().isEmpty) {
+      throw Exception('Address cannot be empty.');
     }
 
-    // Use locationFromAddress to fetch locations
-    List<Location>? locations = await locationFromAddress(address);
+    final List<Location> locations = await locationFromAddress(address.trim());
+    if (locations.isEmpty) {
+      throw Exception(
+        'Could not resolve that address to coordinates. Try refining the location or picking a suggestion from the list.',
+      );
+    }
 
-    // if (locations == null || locations.isEmpty) {
-    //   throw Exception("No locations found for the provided address.");
-    // }
-
-    // Safely get the first location
-    Location location = locations.first;
+    final Location location = locations.first;
     return {
       'latitude': location.latitude,
       'longitude': location.longitude,
-      'address': address,
+      'address': address.trim(),
     };
-  } catch (e) {
-    // Log error to help debugging
-    print('Error in getLocationDetails: $e');
-    throw Exception('Error fetching location details: $e');
-  }
-}
-
-
-  /// Submit the report to the CDRRMO API.
-Future<void> submitReport(BuildContext context, String id, List<XFile> images) async {
-  if (locationController.text.isEmpty || detailsController.text.isEmpty) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Please fill in all fields.')),
-    );
-    return;
   }
 
-  try {
-    final locationDetails = await getLocationDetails(locationController.text);
+  String? _parseReferenceFromBody(String body) {
+    if (body.trim().isEmpty) return null;
+    try {
+      final decoded = json.decode(body);
+      if (decoded is! Map<String, dynamic>) return null;
+      final data = decoded['data'];
+      if (data is Map<String, dynamic>) {
+        final id = data['report_id'] ?? data['id'];
+        if (id != null) return id.toString();
+      }
+      final id = decoded['report_id'] ?? decoded['id'];
+      if (id != null) return id.toString();
+    } catch (_) {}
+    return null;
+  }
 
-    final service = SendMessageService();
-    final response = await service.sendMessageWithImages(
-      id: id,
-      userId: id,
-      address: locationDetails['address'],
-      latitude: locationDetails['latitude'].toString(),
-      longitude: locationDetails['longitude'].toString(),
-      details: detailsController.text,
-      type: 'Message',
-      images: images,
-    );
-
-    if (response.statusCode == 200) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Message submitted successfully.')),
-      );
-      locationController.clear();
-      detailsController.clear();
-      Navigator.pushNamed(context, RouteManager.ambulance_confirmation_screen);
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to submit message: ${response.body}')),
+  Future<MessageReportSubmitResult> submitReport({
+    required String locationText,
+    required String userId,
+    required List<XFile> images,
+    String? bearerToken,
+  }) async {
+    if (locationText.trim().isEmpty) {
+      return MessageReportSubmitResult.fail('Please enter the incident location.');
+    }
+    if (detailsController.text.trim().length < 8) {
+      return MessageReportSubmitResult.fail(
+        'Please describe what happened in at least 8 characters.',
       );
     }
-  } catch (e) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Error: $e')),
-    );
-  }
-}
 
+    try {
+      final Map<String, dynamic> locationDetails =
+          await getLocationDetails(locationText);
+
+      final SendMessageService service = SendMessageService();
+      final response = await service.sendMessageWithImages(
+        userId: userId,
+        address: locationDetails['address'] as String,
+        latitude: locationDetails['latitude'].toString(),
+        longitude: locationDetails['longitude'].toString(),
+        details: detailsController.text.trim(),
+        type: 'Message',
+        images: images,
+        bearerToken: bearerToken,
+      );
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final ref = _parseReferenceFromBody(response.body);
+        return MessageReportSubmitResult.ok(reference: ref);
+      }
+
+      String err = 'Server returned HTTP ${response.statusCode}.';
+      try {
+        final decoded = json.decode(response.body);
+        if (decoded is Map && decoded['message'] != null) {
+          err = decoded['message'].toString();
+        }
+      } catch (_) {
+        if (response.body.isNotEmpty && response.body.length < 400) {
+          err = response.body;
+        }
+      }
+      return MessageReportSubmitResult.fail(err);
+    } catch (e) {
+      return MessageReportSubmitResult.fail(
+        e is Exception ? e.toString().replaceFirst('Exception: ', '') : '$e',
+      );
+    }
+  }
+
+  void clearAfterSuccess() {
+    detailsController.clear();
+  }
 }

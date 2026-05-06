@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:e_response_app_nemsu/helpers/first_run.dart';
 import 'package:e_response_app_nemsu/routes/route_manager.dart';
-import 'package:e_response_app_nemsu/services/twilio_service.dart';
 import 'package:image_picker_platform_interface/image_picker_platform_interface.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -62,8 +61,7 @@ void main() async {
     await prefs.setBool('did_twilio_setup', true);
   }
 
-  // 5) Initialize Twilio (will handle token, PhoneAccount registration, etc)
-  await TwilioService().init();
+  // 5) Twilio Voice registers after login via [MyApp] + Bearer `GET /api/v1/voice/token`.
 
   // 6) Pass firstRun into the app so we can decide which screen to show first
   runApp(MyApp(firstRun: firstTime));

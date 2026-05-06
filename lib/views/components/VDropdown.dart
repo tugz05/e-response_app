@@ -9,13 +9,13 @@ class VDropdown extends StatefulWidget {
   final ValueChanged<String?> onChanged;
 
   const VDropdown({
-    Key? key,
+    super.key,
     required this.hintText,
     this.headerText,
     this.value,
     required this.items,
     required this.onChanged,
-  }) : super(key: key);
+  });
 
   @override
   State<VDropdown> createState() => _VDropdownState();
@@ -43,7 +43,7 @@ class _VDropdownState extends State<VDropdown> {
               ),
             ),
           DropdownButtonFormField<String>(
-            value: widget.value,
+            initialValue: widget.value,
             decoration: InputDecoration(hintText: widget.hintText),
             icon: const Icon(Icons.arrow_drop_down, color: AppColors.primary),
             items:

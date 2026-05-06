@@ -3,7 +3,7 @@ import 'package:e_response_app_nemsu/theme/app_theme.dart';
 import 'package:shimmer/shimmer.dart';
 
 class NewsLoading extends StatelessWidget {
-  const NewsLoading({Key? key}) : super(key: key);
+  const NewsLoading({super.key});
 
   @override
   Widget build(BuildContext context) {

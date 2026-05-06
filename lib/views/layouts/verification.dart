@@ -91,139 +91,207 @@ class _VerificationPageState extends State<VerificationPage> {
     }
   }
 
+  Widget _previewSurface({required Widget child}) {
+    return Container(
+      width: double.infinity,
+      height: 132,
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border),
+      ),
+      clipBehavior: Clip.antiAlias,
+      alignment: Alignment.center,
+      child: child,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    final Widget idPreview =
+        _idImage != null
+            ? Image.file(_idImage!, fit: BoxFit.cover, width: double.infinity)
+            : Padding(
+              padding: const EdgeInsets.all(12),
+              child: Image.asset(
+                'lib/assets/images/id_icons.png',
+                fit: BoxFit.contain,
+              ),
+            );
+
+    final Widget selfiePreview =
+        _selfieImage != null
+            ? Image.file(
+              _selfieImage!,
+              fit: BoxFit.cover,
+              width: double.infinity,
+            )
+            : Padding(
+              padding: const EdgeInsets.all(12),
+              child: Image.asset(
+                'lib/assets/images/scan.png',
+                fit: BoxFit.contain,
+              ),
+            );
+
     return Scaffold(
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            const VStepIndicator(accountState: AccountState.verification),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 35, vertical: 20),
-              child: Column(
-                children: [
-                  Text(
-                    "We need to verify your information.Please submit the documents below to process your registration.",
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontFamily: 'Roboto',
-                      color: AppColors.primary,
-                      fontWeight: FontWeight.w400,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  SizedBox(height: 25),
-                ],
-              ),
-            ),
-            const Column(
-              children: [
-                Padding(
-                  padding: EdgeInsets.only(left: 30),
-                  child: Row(
-                    children: [
-                      Text(
-                        "1. Provide a photo of the front of your ID",
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontFamily: 'Roboto',
-                          color: AppColors.textMuted,
-                          fontWeight: FontWeight.w400,
+      backgroundColor: AppColors.background,
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const VStepIndicator(accountState: AccountState.verification),
+              const SizedBox(height: 14),
+              Card(
+                margin: EdgeInsets.zero,
+                clipBehavior: Clip.antiAlias,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Container(
+                      height: 4,
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            AppColors.primary,
+                            AppColors.primaryAlt,
+                          ],
                         ),
-                        textAlign: TextAlign.left,
                       ),
-                    ],
-                  ),
-                ),
-                SizedBox(height: 20),
-              ],
-            ),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _idImage != null
-                    ? Image.file(
-                      _idImage!,
-                      width: 150,
-                      height: 120,
-                      fit: BoxFit.cover,
-                    )
-                    : Image.asset(
-                      "lib/assets/images/id_icons.png",
-                      width: 150,
-                      height: 120,
                     ),
-                SizedBox(width: 20),
-                Column(
-                  children: [
-                    VButton(
-                      onPressed: () => _takePhoto(true),
-                      text: "Take a Photo",
-                      isOutlined: true,
-                      width: 180,
-                    ),
-                    SizedBox(height: 15),
-                    VButton(
-                      onPressed: () => _uploadImage(true),
-                      text: "Upload an Image",
-                      width: 180,
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'IDENTITY VERIFICATION',
+                            style: theme.textTheme.labelMedium?.copyWith(
+                              color: AppColors.secondary,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.85,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Verify your information',
+                            style: theme.textTheme.titleLarge?.copyWith(
+                              color: AppColors.textPrimary,
+                              fontWeight: FontWeight.w800,
+                              height: 1.15,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            'Submit the documents below so we can process your '
+                            'registration and activate your responder access.',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: AppColors.textMuted,
+                              height: 1.5,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
-              ],
-            ),
-            SizedBox(height: 15),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 30),
-              child: Text(
-                "2. Take a selfie to verify your face matches with your ID ",
-                style: TextStyle(
-                  fontSize: 16,
-                  fontFamily: 'Roboto',
-                  color: AppColors.textMuted,
-                  fontWeight: FontWeight.w400,
-                ),
-                textAlign: TextAlign.left,
               ),
-            ),
-            SizedBox(height: 20),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _selfieImage != null
-                    ? Image.file(
-                      _selfieImage!,
-                      width: 150,
-                      height: 120,
-                      fit: BoxFit.cover,
-                    )
-                    : Image.asset(
-                      "lib/assets/images/scan.png",
-                      width: 150,
-                      height: 120,
-                    ),
-                SizedBox(width: 20),
-                Column(
-                  children: [
-                    VButton(
-                      onPressed: () => _takePhoto(false),
-                      text: "Take a Photo",
-                      isOutlined: true,
-                      width: 180,
-                    ),
-                  ],
+              const SizedBox(height: 16),
+              _VerificationStepSection(
+                stepLabel: 'Step 1',
+                title: 'Government-issued ID',
+                description:
+                    'Provide a clear, well-lit photo of the front of your valid ID.',
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final narrow = constraints.maxWidth < 400;
+                    final preview = _previewSurface(child: idPreview);
+                    final actions = Column(
+                      children: [
+                        VButton(
+                          onPressed: () => _takePhoto(true),
+                          text: 'Take photo',
+                          isOutlined: true,
+                          icon: Icons.photo_camera_outlined,
+                        ),
+                        const SizedBox(height: 10),
+                        VButton(
+                          onPressed: () => _uploadImage(true),
+                          text: 'Upload from gallery',
+                          icon: Icons.photo_library_outlined,
+                        ),
+                      ],
+                    );
+                    if (narrow) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          preview,
+                          const SizedBox(height: 14),
+                          actions,
+                        ],
+                      );
+                    }
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(flex: 5, child: preview),
+                        const SizedBox(width: 14),
+                        Expanded(flex: 6, child: actions),
+                      ],
+                    );
+                  },
                 ),
-              ],
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 50),
-              child: VButton(
+              ),
+              const SizedBox(height: 14),
+              _VerificationStepSection(
+                stepLabel: 'Step 2',
+                title: 'Live selfie',
+                description:
+                    'Take a selfie so we can confirm your face matches your ID.',
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final narrow = constraints.maxWidth < 400;
+                    final preview = _previewSurface(child: selfiePreview);
+                    final actions = VButton(
+                      onPressed: () => _takePhoto(false),
+                      text: 'Take selfie',
+                      isOutlined: true,
+                      icon: Icons.face_retouching_natural_outlined,
+                    );
+                    if (narrow) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          preview,
+                          const SizedBox(height: 14),
+                          actions,
+                        ],
+                      );
+                    }
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(flex: 5, child: preview),
+                        const SizedBox(width: 14),
+                        Expanded(flex: 6, child: actions),
+                      ],
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 24),
+              VButton(
                 onPressed: () async {
                   if (_idImage != null && _selfieImage != null) {
                     setState(() {
                       _isVerifying = true;
                     });
-                    await ImageUploadService().uploadImages(
+                    final uploaded = await ImageUploadService().uploadImages(
                       userId.toString(),
                       _idImage!,
                       _selfieImage!,
@@ -234,21 +302,109 @@ class _VerificationPageState extends State<VerificationPage> {
                     setState(() {
                       _isVerifying = false;
                     });
-                    Navigator.pushNamed(context, RouteManager.success_screen);
+                    if (uploaded) {
+                      Navigator.pushNamed(context, RouteManager.success_screen);
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'Upload failed. Check your connection and try again.',
+                          ),
+                        ),
+                      );
+                    }
                   } else {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
+                      const SnackBar(
                         content: Text(
-                          "Please select both images before verifying.",
+                          'Please add both your ID photo and selfie before submitting.',
                         ),
                       ),
                     );
                   }
                 },
-                text: "Verify Account",
+                text: 'Submit verification',
                 isLoading: _isVerifying,
               ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _VerificationStepSection extends StatelessWidget {
+  const _VerificationStepSection({
+    required this.stepLabel,
+    required this.title,
+    required this.description,
+    required this.child,
+  });
+
+  final String stepLabel;
+  final String title;
+  final String description;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.primarySoft,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    stepLabel,
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: AppColors.primary,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          color: AppColors.textPrimary,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        description,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: AppColors.textMuted,
+                          height: 1.45,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
+            const SizedBox(height: 16),
+            child,
           ],
         ),
       ),

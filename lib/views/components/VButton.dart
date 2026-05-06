@@ -14,7 +14,7 @@ class VButton extends StatelessWidget {
   final Color? backgroundColor;
 
   const VButton({
-    Key? key,
+    super.key,
     required this.onPressed,
     required this.text,
     this.icon,
@@ -25,7 +25,7 @@ class VButton extends StatelessWidget {
     this.isLoading = false,
     this.padding = const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
     this.backgroundColor,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

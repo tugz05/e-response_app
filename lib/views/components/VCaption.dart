@@ -6,10 +6,10 @@ class VCaption extends StatelessWidget {
   final String  text;
 
     const VCaption({
-    Key? key,
+    super.key,
     required this.header,
     required this.text,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

@@ -9,12 +9,12 @@ class VIconButton extends StatelessWidget {
   final double width;
 
   const VIconButton({
-    Key? key,
+    super.key,
     required this.onPressed,
     required this.text,
     this.icon,
     this.width = double.infinity,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

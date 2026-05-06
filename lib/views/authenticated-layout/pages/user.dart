@@ -2,9 +2,11 @@ import 'dart:convert';
 
 import 'package:e_response_app_nemsu/controllers/VTextFieldController.dart';
 import 'package:e_response_app_nemsu/helpers/logout.dart';
+import 'package:e_response_app_nemsu/services/report_history_service.dart';
 import 'package:e_response_app_nemsu/theme/app_theme.dart';
 import 'package:e_response_app_nemsu/views/components/VButton.dart';
 import 'package:e_response_app_nemsu/views/components/VTextField.dart';
+import 'package:e_response_app_nemsu/views/components/verification_selfie_avatar.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
@@ -33,6 +35,9 @@ class _UserPageState extends State<UserPage> {
   String email = 'Loading...';
   String mobile = '';
   String address = '';
+  String? _selfiePath;
+
+  final ReportHistoryService _reportHistoryService = ReportHistoryService();
 
   bool _isUpdatingProfile = false;
   bool _isChangingPassword = false;
@@ -66,6 +71,7 @@ class _UserPageState extends State<UserPage> {
       email = prefs.getString('email') ?? '';
       mobile = prefs.getString('phone') ?? '';
       address = prefs.getString('address') ?? '';
+      _selfiePath = prefs.getString('img_selfie');
     });
   }
 
@@ -93,28 +99,6 @@ class _UserPageState extends State<UserPage> {
     return '${value[0]}${'*' * (atIdx - 1)}${value.substring(atIdx)}';
   }
 
-  String _buildInitials(String fullName) {
-    final parts =
-        fullName
-            .trim()
-            .split(RegExp(r'\s+'))
-            .where((part) => part.isNotEmpty)
-            .toList();
-
-    if (parts.isEmpty) {
-      return 'U';
-    }
-
-    if (parts.length == 1) {
-      final String firstPart = parts.first;
-      return firstPart
-          .substring(0, firstPart.length >= 2 ? 2 : 1)
-          .toUpperCase();
-    }
-
-    return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
-  }
-
   void _openSection(_UserSection section) {
     setState(() {
       _section = section;
@@ -139,46 +123,31 @@ class _UserPageState extends State<UserPage> {
       _transactionError = null;
     });
 
-    try {
-      if (userId.isEmpty) {
-        setState(() {
-          _transactionError = 'User ID not found.';
-          _isLoadingTransactions = false;
-        });
-        return;
-      }
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token');
 
-      final url = 'https://cdrrmo-tandag.com/api/v1/report-history/$userId';
-      final response = await http.get(Uri.parse(url));
+    final result = await _reportHistoryService.fetchForUser(
+      userId,
+      bearerToken: token,
+    );
 
-      if (!mounted) {
-        return;
-      }
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        final items =
-            (data is Map && data['data'] is List) ? data['data'] as List : [];
-        setState(() {
-          _transactions = items;
-          _isLoadingTransactions = false;
-        });
-      } else {
-        setState(() {
-          _transactionError =
-              'Failed to fetch transactions (${response.statusCode})';
-          _isLoadingTransactions = false;
-        });
-      }
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _transactionError = 'Error: $error';
-        _isLoadingTransactions = false;
-      });
+    if (!mounted) {
+      return;
     }
+
+    if (!result.isSuccess) {
+      setState(() {
+        _transactionError = result.errorMessage;
+        _isLoadingTransactions = false;
+        _transactions = [];
+      });
+      return;
+    }
+
+    setState(() {
+      _transactions = List<dynamic>.from(result.items ?? []);
+      _isLoadingTransactions = false;
+    });
   }
 
   Future<void> _updateProfile() async {
@@ -532,17 +501,10 @@ class _UserPageState extends State<UserPage> {
             padding: const EdgeInsets.all(18),
             child: Row(
               children: [
-                CircleAvatar(
+                VerificationSelfieAvatar(
+                  displayName: name,
+                  selfiePath: _selfiePath,
                   radius: 30,
-                  backgroundColor: AppColors.primarySoft,
-                  child: Text(
-                    _buildInitials(name),
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      color: AppColors.primary,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.8,
-                    ),
-                  ),
                 ),
                 const SizedBox(width: 14),
                 Expanded(

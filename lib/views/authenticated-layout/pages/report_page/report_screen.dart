@@ -1,23 +1,15 @@
+import 'package:e_response_app_nemsu/routes/route_manager.dart';
 import 'package:e_response_app_nemsu/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'message_report_screen.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 class ReportScreen extends StatelessWidget {
-  final String phoneNumber = "09630990990"; // Replace with your desired phone number
+  const ReportScreen({super.key});
 
-  void _makePhoneCall() async {
-    final Uri phoneUri = Uri(scheme: 'tel', path: phoneNumber);
-    try {
-      if (await canLaunchUrl(phoneUri)) {
-        await launchUrl(phoneUri);
-      } else {
-        throw 'Could not launch $phoneUri';
-      }
-    } catch (e) {
-      print('Error occurred: $e');
-    }
+  void _openInAppVoiceCall(BuildContext context) {
+    Navigator.pushNamed(context, RouteManager.call_screen);
   }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -60,7 +52,7 @@ class ReportScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 10),
                     Text(
-                      'Choose the fastest way to contact responders. Use message reporting for details and images, or place a direct call for urgent assistance.',
+                      'Choose the fastest way to contact responders. Use message reporting for details and images, or start an in-app voice call through the operations center (Twilio VoIP — not the phone dialer).',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: AppColors.textMuted,
                         height: 1.4,
@@ -75,7 +67,7 @@ class ReportScreen extends StatelessWidget {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (context) => MessageReportScreen(),
+                              builder: (context) => const MessageReportScreen(),
                             ),
                           );
                         },
@@ -87,9 +79,9 @@ class ReportScreen extends StatelessWidget {
                     SizedBox(
                       width: double.infinity,
                       child: OutlinedButton.icon(
-                        onPressed: _makePhoneCall,
+                        onPressed: () => _openInAppVoiceCall(context),
                         icon: const Icon(Icons.call_outlined),
-                        label: const Text('Call Hotline'),
+                        label: const Text('Voice call (in-app)'),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: AppColors.accent,
                           side: const BorderSide(color: AppColors.accent),

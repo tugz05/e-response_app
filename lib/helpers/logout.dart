@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class LogoutModule extends StatelessWidget {
-  const LogoutModule({Key? key}) : super(key: key);
+  const LogoutModule({super.key});
 
   // Shows the custom confirmation dialog and logs out if confirmed
   static Future<void> confirmAndLogout(BuildContext context) async {

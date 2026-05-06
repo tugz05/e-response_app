@@ -4,6 +4,8 @@ import 'package:e_response_app_nemsu/views/authenticated-layout/components/newsc
 import 'package:flutter/material.dart';
 
 class NewsListScreen extends StatefulWidget {
+  const NewsListScreen({super.key});
+
   @override
   _NewsListScreenState createState() => _NewsListScreenState();
 }
@@ -20,7 +22,7 @@ class _NewsListScreenState extends State<NewsListScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return SizedBox(
       height: 180,
       child: FutureBuilder<List<News>>(
         future: _newsFuture,
