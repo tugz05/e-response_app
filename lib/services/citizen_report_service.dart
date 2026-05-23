@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:developer' as developer;
 
 import 'package:e_response_app_nemsu/helpers/api_url.dart';
 import 'package:e_response_app_nemsu/models/citizen_report_detail.dart';
@@ -64,6 +65,23 @@ class CitizenReportService {
       final response = await http
           .get(uri, headers: _headers(bearerToken))
           .timeout(const Duration(seconds: 30));
+
+      developer.log(
+        'GET api/v1/reports/$reportId · HTTP ${response.statusCode}',
+        name: 'CitizenReport API',
+      );
+      try {
+        final decoded = json.decode(response.body);
+        final pretty = const JsonEncoder.withIndent(
+          '  ',
+        ).convert(decoded);
+        developer.log(pretty, name: 'CitizenReport API · JSON');
+      } catch (_) {
+        developer.log(
+          response.body,
+          name: 'CitizenReport API · raw body',
+        );
+      }
 
       if (response.statusCode == 200) {
         final decoded = json.decode(response.body);

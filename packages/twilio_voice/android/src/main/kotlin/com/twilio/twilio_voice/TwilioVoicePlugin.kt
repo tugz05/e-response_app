@@ -88,6 +88,9 @@ class TwilioVoicePlugin : FlutterPlugin, MethodCallHandler, EventChannel.StreamH
     private var eventChannel: EventChannel? = null
     private var eventSink: EventSink? = null
 
+    // Events received before Flutter opens the EventChannel (e.g. cold start from FCM).
+    private val pendingFlutterEvents: ArrayDeque<String> = ArrayDeque()
+
     // member instance functions
     private var callListener = callListener()
 
@@ -136,10 +139,13 @@ class TwilioVoicePlugin : FlutterPlugin, MethodCallHandler, EventChannel.StreamH
             flutterPluginBinding.applicationContext
         )
         hasStarted = true
+        registerReceiver()
     }
 
     override fun onDetachedFromEngine(binding: FlutterPluginBinding) {
         Log.d(TAG, "Detached from Flutter engine")
+        unregisterReceiver()
+        synchronized(pendingFlutterEvents) { pendingFlutterEvents.clear() }
         context = null
         methodChannel!!.setMethodCallHandler(null)
         methodChannel = null
@@ -319,12 +325,49 @@ class TwilioVoicePlugin : FlutterPlugin, MethodCallHandler, EventChannel.StreamH
     //region Flutter EventChannel.StreamHandler
     override fun onListen(arguments: Any?, events: EventSink?) {
         Log.i(TAG, "Setting event sink")
+        Log.i("VoiceIncoming", "EventChannel onListen — Flutter subscribed to call events")
         this.eventSink = events
+        flushPendingFlutterEvents()
     }
 
     override fun onCancel(arguments: Any?) {
         Log.i(TAG, "Removing event sink")
+        Log.i("VoiceIncoming", "EventChannel onCancel — call events unsubscribed")
         eventSink = null
+    }
+
+    private fun emitToFlutterOrQueue(rawMessage: String) {
+        val sink = eventSink
+        if (sink != null) {
+            Log.d(TAG, "logEvent: $rawMessage")
+            if (rawMessage.startsWith("Incoming|") || rawMessage.startsWith("Ringing|")) {
+                Log.i("VoiceIncoming", "emit→Dart sink ok: ${rawMessage.take(120)}")
+            }
+            sink.success(rawMessage)
+        } else {
+            synchronized(pendingFlutterEvents) {
+                pendingFlutterEvents.addLast(rawMessage)
+                Log.w(TAG, "No event sink; queued for Flutter: $rawMessage")
+                if (rawMessage.startsWith("Incoming|") || rawMessage.startsWith("Ringing|")) {
+                    Log.w("VoiceIncoming", "queued (no EventChannel yet): ${rawMessage.take(120)}")
+                }
+            }
+        }
+    }
+
+    private fun flushPendingFlutterEvents() {
+        val sink = eventSink ?: return
+        synchronized(pendingFlutterEvents) {
+            val n = pendingFlutterEvents.size
+            if (n > 0) {
+                Log.i("VoiceIncoming", "flushPendingFlutterEvents count=$n")
+            }
+            while (pendingFlutterEvents.isNotEmpty()) {
+                val msg = pendingFlutterEvents.removeFirst()
+                Log.d(TAG, "logEvent (flushed pending): $msg")
+                sink.success(msg)
+            }
+        }
     }
     //endregion
 
@@ -1257,12 +1300,10 @@ class TwilioVoicePlugin : FlutterPlugin, MethodCallHandler, EventChannel.StreamH
         activity = activityPluginBinding.activity
         activityPluginBinding.addOnNewIntentListener(this)
         activityPluginBinding.addRequestPermissionsResultListener(this)
-        registerReceiver()
     }
 
     override fun onDetachedFromActivityForConfigChanges() {
         Log.d(TAG, "onDetachedFromActivityForConfigChanges")
-        unregisterReceiver()
         activity = null
     }
 
@@ -1271,60 +1312,68 @@ class TwilioVoicePlugin : FlutterPlugin, MethodCallHandler, EventChannel.StreamH
         activity = activityPluginBinding.activity
         activityPluginBinding.addRequestPermissionsResultListener(this)
         activityPluginBinding.addOnNewIntentListener(this)
-        registerReceiver()
     }
 
     override fun onDetachedFromActivity() {
         Log.d(TAG, "onDetachedFromActivity")
-        unregisterReceiver()
         activity = null
     }
     //endregion
 
     //region Flutter BroadcastReceiver
     private fun registerReceiver() {
-        assert(activity != null) { "Activity must not be null, has the plugin been registered?" }
-        assert(broadcastReceiver != null) { "BroadcastReceiver must not be null, has the plugin been registered?" }
+        val ctx = context ?: run {
+            Log.e(TAG, "registerReceiver: context is null")
+            return
+        }
+        val receiver = broadcastReceiver ?: run {
+            Log.e(TAG, "registerReceiver: broadcastReceiver is null")
+            return
+        }
         if (!isReceiverRegistered) {
-            Log.d(TAG, "registerReceiver")
-            val intentFilter = IntentFilter().apply {
-                addAction(TVBroadcastReceiver.ACTION_AUDIO_STATE)
-                addAction(TVBroadcastReceiver.ACTION_ACTIVE_CALL_CHANGED)
-                addAction(TVBroadcastReceiver.ACTION_INCOMING_CALL)
-                addAction(TVBroadcastReceiver.ACTION_CALL_ENDED)
-                addAction(TVBroadcastReceiver.ACTION_CALL_STATE)
-                addAction(TVBroadcastReceiver.ACTION_INCOMING_CALL_IGNORED)
-
-                addAction(TVNativeCallActions.ACTION_ANSWERED)
-                addAction(TVNativeCallActions.ACTION_REJECTED)
-                addAction(TVNativeCallActions.ACTION_DTMF)
-                addAction(TVNativeCallActions.ACTION_ABORT)
-                addAction(TVNativeCallActions.ACTION_HOLD)
-                addAction(TVNativeCallActions.ACTION_UNHOLD)
-
-                addAction(TVNativeCallEvents.EVENT_CONNECTING)
-                addAction(TVNativeCallEvents.EVENT_INCOMING)
-                addAction(TVNativeCallEvents.EVENT_RINGING)
-                addAction(TVNativeCallEvents.EVENT_CONNECTED)
-                addAction(TVNativeCallEvents.EVENT_CONNECT_FAILURE)
-                addAction(TVNativeCallEvents.EVENT_RECONNECTING)
-                addAction(TVNativeCallEvents.EVENT_RECONNECTED)
-                addAction(TVNativeCallEvents.EVENT_DISCONNECTED_LOCAL)
-                addAction(TVNativeCallEvents.EVENT_DISCONNECTED_REMOTE)
-                addAction(TVNativeCallEvents.EVENT_MISSED)
-            }
-            LocalBroadcastManager.getInstance(context!!)
-                .registerReceiver(broadcastReceiver!!, intentFilter)
+            Log.d(TAG, "registerReceiver (engine / application context)")
+            LocalBroadcastManager.getInstance(ctx)
+                .registerReceiver(receiver, twilioBroadcastIntentFilter())
             isReceiverRegistered = true
+            Log.i("VoiceIncoming", "LocalBroadcastReceiver registered for Twilio plugin")
         }
     }
 
     private fun unregisterReceiver() {
-        assert(activity != null) { "Activity must not be null, has the plugin been registered?" }
-        assert(broadcastReceiver != null) { "BroadcastReceiver must not be null, has the plugin been registered?" }
-        if (isReceiverRegistered) {
-            LocalBroadcastManager.getInstance(activity!!).unregisterReceiver(broadcastReceiver!!)
+        val ctx = context
+        val receiver = broadcastReceiver
+        if (ctx != null && receiver != null && isReceiverRegistered) {
+            LocalBroadcastManager.getInstance(ctx).unregisterReceiver(receiver)
             isReceiverRegistered = false
+        }
+    }
+
+    private fun twilioBroadcastIntentFilter(): IntentFilter {
+        return IntentFilter().apply {
+            addAction(TVBroadcastReceiver.ACTION_AUDIO_STATE)
+            addAction(TVBroadcastReceiver.ACTION_ACTIVE_CALL_CHANGED)
+            addAction(TVBroadcastReceiver.ACTION_INCOMING_CALL)
+            addAction(TVBroadcastReceiver.ACTION_CALL_ENDED)
+            addAction(TVBroadcastReceiver.ACTION_CALL_STATE)
+            addAction(TVBroadcastReceiver.ACTION_INCOMING_CALL_IGNORED)
+
+            addAction(TVNativeCallActions.ACTION_ANSWERED)
+            addAction(TVNativeCallActions.ACTION_REJECTED)
+            addAction(TVNativeCallActions.ACTION_DTMF)
+            addAction(TVNativeCallActions.ACTION_ABORT)
+            addAction(TVNativeCallActions.ACTION_HOLD)
+            addAction(TVNativeCallActions.ACTION_UNHOLD)
+
+            addAction(TVNativeCallEvents.EVENT_CONNECTING)
+            addAction(TVNativeCallEvents.EVENT_INCOMING)
+            addAction(TVNativeCallEvents.EVENT_RINGING)
+            addAction(TVNativeCallEvents.EVENT_CONNECTED)
+            addAction(TVNativeCallEvents.EVENT_CONNECT_FAILURE)
+            addAction(TVNativeCallEvents.EVENT_RECONNECTING)
+            addAction(TVNativeCallEvents.EVENT_RECONNECTED)
+            addAction(TVNativeCallEvents.EVENT_DISCONNECTED_LOCAL)
+            addAction(TVNativeCallEvents.EVENT_DISCONNECTED_REMOTE)
+            addAction(TVNativeCallEvents.EVENT_MISSED)
         }
     }
     //endregion
@@ -1657,8 +1706,14 @@ class TwilioVoicePlugin : FlutterPlugin, MethodCallHandler, EventChannel.StreamH
                     }
                 }.toString()
 //                callSid = callHandle
-                logEvents("", arrayOf("Incoming", from, to, CallDirection.INCOMING.label, params))
-                logEvents("", arrayOf("Ringing", from, to, CallDirection.INCOMING.label, params))
+                Log.i("VoiceIncoming", "plugin→Flutter Incoming/Ringing sid=$callHandle from=$from to=$to")
+                val direction = CallDirection.INCOMING.label
+                emitToFlutterOrQueue(
+                    listOf("Incoming", from, to, direction, params).joinToString("|"),
+                )
+                emitToFlutterOrQueue(
+                    listOf("Ringing", from, to, direction, params).joinToString("|"),
+                )
             }
 
             TVBroadcastReceiver.ACTION_CALL_ENDED -> {

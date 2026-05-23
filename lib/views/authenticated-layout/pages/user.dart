@@ -558,15 +558,14 @@ class _UserPageState extends State<UserPage> {
           onTap: () => _openSection(_UserSection.changePassword),
         ),
         const SizedBox(height: 24),
-        VButton(
-          onPressed: () {
-            LogoutModule.confirmAndLogout(context);
-          },
-          text: 'Logout',
-          isOutlined: true,
-          textColor: AppColors.accent,
-          outlineBorderColor: AppColors.accent,
+        Text(
+          'Session',
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
         ),
+        const SizedBox(height: 10),
+        const LogoutAccountTile(),
       ],
     );
   }

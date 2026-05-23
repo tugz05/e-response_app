@@ -48,11 +48,19 @@ class SituationalIncidentReportResult<T> {
 class SituationalIncidentReportService {
   SituationalIncidentReportService();
 
-  static Map<String, String> _headers(String? bearerToken) {
+  /// Use [jsonBody] only for requests that send a JSON body. Bodyless methods
+  /// (GET, DELETE) must not send `Content-Type: application/json` or some
+  /// Laravel stacks throw while parsing an empty body → HTTP 500.
+  static Map<String, String> _headers(
+    String? bearerToken, {
+    bool jsonBody = false,
+  }) {
     final h = <String, String>{
       'Accept': 'application/json',
-      'Content-Type': 'application/json',
     };
+    if (jsonBody) {
+      h['Content-Type'] = 'application/json';
+    }
     final t = bearerToken?.trim();
     if (t != null && t.isNotEmpty) {
       h['Authorization'] = 'Bearer $t';
@@ -152,6 +160,22 @@ class SituationalIncidentReportService {
     return null;
   }
 
+  /// Staff operations console: all situational incident reports (authorized server-side).
+  /// `GET api/v1/situational-incident-reports/history/all`
+  Future<SituationalIncidentReportResult<List<SituationalIncidentReport>>>
+      fetchHistoryAll({
+    required String bearerToken,
+  }) async {
+    final uri = Uri.parse(
+      ApiUrl.getServiceUrl(
+        'api/v1/situational-incident-reports/history/all',
+      ),
+    );
+    return _fetchHistory(uri, bearerToken);
+  }
+
+  /// Signed-in user's own history.
+  /// `GET api/v1/situational-incident-reports/history/{userId}`
   Future<SituationalIncidentReportResult<List<SituationalIncidentReport>>>
       fetchHistory(
     String userId, {
@@ -166,6 +190,11 @@ class SituationalIncidentReportService {
         'api/v1/situational-incident-reports/history/$uid',
       ),
     );
+    return _fetchHistory(uri, bearerToken);
+  }
+
+  Future<SituationalIncidentReportResult<List<SituationalIncidentReport>>>
+      _fetchHistory(Uri uri, String bearerToken) async {
     try {
       final response = await http
           .get(uri, headers: _headers(bearerToken))
@@ -253,7 +282,7 @@ class SituationalIncidentReportService {
       final response = await http
           .post(
             uri,
-            headers: _headers(bearerToken),
+            headers: _headers(bearerToken, jsonBody: true),
             body: jsonEncode(body.toJson(forCreate: true)),
           )
           .timeout(const Duration(seconds: 45));
@@ -291,7 +320,7 @@ class SituationalIncidentReportService {
       final response = await http
           .put(
             uri,
-            headers: _headers(bearerToken),
+            headers: _headers(bearerToken, jsonBody: true),
             body: jsonEncode(body.toJson()),
           )
           .timeout(const Duration(seconds: 45));

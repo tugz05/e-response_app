@@ -655,8 +655,7 @@ class TVConnectionService : ConnectionService() {
     }
 
     private fun sendBroadcastEvent(ctx: Context, event: String, callSid: String?, extras: Bundle? = null) {
-        Intent(ctx, TVBroadcastReceiver::class.java).apply {
-            action = event
+        Intent(event).apply {
             putExtra(EXTRA_CALL_HANDLE, callSid)
             extras?.let { putExtras(it) }
             LocalBroadcastManager.getInstance(ctx).sendBroadcast(this)
@@ -665,8 +664,7 @@ class TVConnectionService : ConnectionService() {
 
     private fun sendBroadcastCallHandle(ctx: Context, callSid: String?) {
         Log.d(TAG, "sendBroadcastCallHandle: ${if (callSid != null) "On call" else "Not on call"}}")
-        Intent(ctx, TVBroadcastReceiver::class.java).apply {
-            action = TVBroadcastReceiver.ACTION_ACTIVE_CALL_CHANGED
+        Intent(TVBroadcastReceiver.ACTION_ACTIVE_CALL_CHANGED).apply {
             putExtra(EXTRA_CALL_HANDLE, callSid)
             LocalBroadcastManager.getInstance(ctx).sendBroadcast(this)
         }

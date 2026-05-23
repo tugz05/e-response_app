@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "525072482085",
+    "project_id": "e-response-tandag",
+    "storage_bucket": "e-response-tandag.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:525072482085:android:6de9ffbc6c8697201d24cc",
+        "android_client_info": {
+          "package_name": "com.example.e_response_app_nemsu"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDQuIpFW5RmRrNXtO0jlt5KB9AY_I1MLbQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

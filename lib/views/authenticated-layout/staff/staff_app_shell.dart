@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:e_response_app_nemsu/routes/route_manager.dart';
 import 'package:e_response_app_nemsu/services/report_history_service.dart';
 import 'package:e_response_app_nemsu/services/shared_preferences/SharedPreferencesService.dart';
@@ -39,10 +41,10 @@ class _StaffAppShellState extends State<StaffAppShell> {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    // [Listener] avoids stealing/competing with taps on dispatch/incident cards.
+    return Listener(
       behavior: HitTestBehavior.translucent,
-      onTap: widget.onUserActivity,
-      onPanDown: (_) => widget.onUserActivity(),
+      onPointerDown: (_) => widget.onUserActivity(),
       child: Scaffold(
         backgroundColor: const Color(0xFFF1F4F9),
         body: AnimatedSwitcher(
@@ -297,6 +299,16 @@ class _StaffDispatchPageState extends State<StaffDispatchPage> {
         ),
       );
       return;
+    }
+    try {
+      final rowJson = const JsonEncoder.withIndent('  ').convert(tx);
+      debugPrint('[StaffDispatch] Citizen report tapped · id=$id');
+      debugPrint('[StaffDispatch] List row JSON:\n$rowJson');
+    } catch (e) {
+      debugPrint(
+        '[StaffDispatch] Citizen report tapped · id=$id (JSON encode failed: $e)',
+      );
+      debugPrint('[StaffDispatch] List row (toString): $tx');
     }
     await Navigator.of(context, rootNavigator: true).push<void>(
       MaterialPageRoute(

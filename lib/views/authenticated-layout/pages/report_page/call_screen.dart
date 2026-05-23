@@ -13,6 +13,10 @@ import 'package:twilio_voice/twilio_voice.dart';
 
 /// Human-readable hint when Laravel returns busy / none available (503, etc.).
 String _unavailableDetail(CallAvailabilityResponse r) {
+  final block = r.blockReason?.trim();
+  if (block != null && block.isNotEmpty) {
+    return block;
+  }
   if (r.totalOperators <= 0) {
     return 'The server reports no operator accounts configured for voice yet.';
   }
@@ -302,6 +306,9 @@ class _CallScreenState extends State<CallScreen> {
       }
 
       _dialedToExact = toExact;
+      TwilioService.incomingDebug(
+        'citizen→staff dial starting toExact="$toExact" reportId=$_reportId',
+      );
       await _twilio.placeOutgoingConnect(toExact);
     } catch (e) {
       _failDial('Something went wrong: $e');

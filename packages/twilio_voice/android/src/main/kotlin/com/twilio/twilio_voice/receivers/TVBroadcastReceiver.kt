@@ -96,7 +96,9 @@ class TVBroadcastReceiver(private val plugin: TwilioVoicePlugin) : BroadcastRece
             return
         }
         Log.d(TAG, "onReceive: Received broadcast for action $action")
-
+        if (action == ACTION_INCOMING_CALL) {
+            Log.i("VoiceIncoming", "TVBroadcastReceiver onReceive → plugin (incoming)")
+        }
         plugin.handleBroadcastIntent(intent)
     }
 }

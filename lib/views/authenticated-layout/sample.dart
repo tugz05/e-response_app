@@ -114,34 +114,22 @@ class _MyAppState extends State<MyApp> {
     Navigator.pop(context); // Close the drawer after selection
   }
 
-  Future<bool> _onWillPop() async {
-    final shouldLogout = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Logout'),
-        content: Text('Are you sure you want to logout?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop(true);
-              LogoutModule.performLogout(context);
-            },
-            child: Text('Logout'),
-          ),
-        ],
-      ),
-    );
-    return shouldLogout ?? false;
+  Future<void> _handleBackRequest() async {
+    final confirmed = await LogoutModule.showSignOutConfirmationDialog(context);
+    if (!mounted) return;
+    if (confirmed == true) {
+      await LogoutModule.performLogout(context);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return WillPopScope(
-      onWillPop: _onWillPop,
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        unawaited(_handleBackRequest());
+      },
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: _resetInactivityTimer,

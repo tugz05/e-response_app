@@ -4,10 +4,12 @@ import 'dart:ui';
 import 'package:e_response_app_nemsu/helpers/account_session.dart';
 import 'package:e_response_app_nemsu/helpers/logout.dart';
 import 'package:e_response_app_nemsu/routes/route_manager.dart';
+import 'package:e_response_app_nemsu/services/app_push_service.dart';
 import 'package:e_response_app_nemsu/services/twilio_service.dart';
 import 'package:e_response_app_nemsu/services/shared_preferences/SharedPreferencesService.dart';
 import 'package:e_response_app_nemsu/helpers/app_mobile_role.dart';
 import 'package:e_response_app_nemsu/views/authenticated-layout/staff/staff_app_shell.dart';
+import 'package:e_response_app_nemsu/views/authenticated-layout/staff/staff_voice_bridge.dart';
 import 'package:e_response_app_nemsu/theme/app_theme.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:e_response_app_nemsu/views/authenticated-layout/pages/dashboard.dart';
@@ -40,6 +42,8 @@ class _MyAppState extends State<MyApp> {
   @override
   void initState() {
     super.initState();
+    // Native Twilio plugin drops events when EventChannel has no listener yet.
+    TwilioService().ensureCallEventsDelivered();
     _syncPagesWithRole(AppMobileRole.citizen);
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       AccountSession.guardAuthenticatedShell(context);
@@ -59,6 +63,7 @@ class _MyAppState extends State<MyApp> {
     final creds = await _prefsService.getCredentials();
     final token = creds['token'];
     await TwilioService().init(bearerToken: token);
+    unawaited(AppPushService.instance.syncTokenWithBackendIfPossible());
   }
 
   void _resetInactivityTimer() {
@@ -131,10 +136,15 @@ class _MyAppState extends State<MyApp> {
   @override
   Widget build(BuildContext context) {
     if (_role.canAccessIncidentWorkspace) {
-      return GestureDetector(
-        onTap: _resetInactivityTimer,
-        onPanDown: (_) => _resetInactivityTimer(),
-        child: StaffAppShell(onUserActivity: _resetInactivityTimer),
+      // Use [Listener] so inactivity tracking does not compete with child taps
+      // ([InkWell], [PopupMenuButton], etc.) in the gesture arena.
+      return Listener(
+        behavior: HitTestBehavior.translucent,
+        onPointerDown: (_) => _resetInactivityTimer(),
+        child: StaffVoiceBridge(
+          onUserActivity: _resetInactivityTimer,
+          child: StaffAppShell(onUserActivity: _resetInactivityTimer),
+        ),
       );
     }
 

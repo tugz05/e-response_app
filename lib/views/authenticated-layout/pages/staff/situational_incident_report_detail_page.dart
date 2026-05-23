@@ -1,9 +1,9 @@
 import 'package:e_response_app_nemsu/models/situational_incident_report.dart';
-import 'package:e_response_app_nemsu/routes/route_manager.dart';
 import 'package:e_response_app_nemsu/services/shared_preferences/SharedPreferencesService.dart';
 import 'package:e_response_app_nemsu/services/situational_incident_report_service.dart';
 import 'package:e_response_app_nemsu/theme/app_theme.dart';
-import 'package:e_response_app_nemsu/views/authenticated-layout/pages/staff/situational_incident_report_form_args.dart';
+import 'package:e_response_app_nemsu/views/authenticated-layout/pages/staff/situational_incident_report_delete_dialog.dart';
+import 'package:e_response_app_nemsu/views/authenticated-layout/pages/staff/situational_incident_report_form_page.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -100,10 +100,18 @@ class _SituationalIncidentReportDetailPageState
   }
 
   Future<void> _openEdit() async {
-    final changed =
-        await Navigator.of(context, rootNavigator: true).pushNamed<bool>(
-      RouteManager.situationalIncidentReportForm,
-      arguments: SituationalIncidentReportFormArgs(existingId: widget.reportId),
+    final nav =
+        Navigator.maybeOf(context, rootNavigator: true) ??
+        Navigator.maybeOf(context);
+    if (nav == null) {
+      return;
+    }
+    final changed = await nav.push<bool>(
+      MaterialPageRoute<bool>(
+        builder:
+            (_) =>
+                SituationalIncidentReportFormPage(existingId: widget.reportId),
+      ),
     );
     if (!mounted) {
       return;
@@ -120,31 +128,12 @@ class _SituationalIncidentReportDetailPageState
       return;
     }
 
-    final ok =
-        await showDialog<bool>(
-          context: context,
-          builder:
-              (ctx) => AlertDialog(
-                title: const Text('Delete this report?'),
-                content: const Text(
-                  'This situational incident record will be permanently removed. This cannot be undone.',
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(ctx, false),
-                    child: const Text('Cancel'),
-                  ),
-                  FilledButton(
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppColors.accent,
-                    ),
-                    onPressed: () => Navigator.pop(ctx, true),
-                    child: const Text('Delete'),
-                  ),
-                ],
-              ),
-        ) ??
-        false;
+    final ok = await confirmDeleteSituationalIncidentReport(
+      context,
+      recordTitle:
+          _report?.incidentType ?? 'Incident #${widget.reportId}',
+      recordId: widget.reportId,
+    );
 
     if (!ok || !mounted) {
       return;

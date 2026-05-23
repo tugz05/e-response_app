@@ -27,6 +27,9 @@ class CallAvailabilityResponse {
 
   final String? twilioNote;
 
+  /// Laravel diagnostic when `can_connect` is false (e.g. `NO_OPERATOR_ONLINE`).
+  final String? blockReason;
+
   const CallAvailabilityResponse({
     required this.canConnect,
     required this.availableOperators,
@@ -37,6 +40,7 @@ class CallAvailabilityResponse {
     this.twilioDialIdentity,
     this.twimlDialOperatorIdentities,
     this.twilioNote,
+    this.blockReason,
   });
 
   /// Merge `data` into root when Laravel nests fields (e.g. `{ "data": { "can_connect": true } }`).
@@ -74,6 +78,7 @@ class CallAvailabilityResponse {
       twilioDialIdentity: _nullableString(m['twilio_dial_identity']),
       twimlDialOperatorIdentities: _stringList(m['twiml_dial_operator_identities']),
       twilioNote: _nullableString(m['twilio_note']),
+      blockReason: _nullableString(m['block_reason']),
     );
   }
 
@@ -131,9 +136,17 @@ class SetLocationResponse {
 }
 
 /// GET `/api/v1/voice/token` (Bearer Sanctum) — JWT for SDK and opaque `dial_to` for outbound `To`.
+///
+/// Aligns with Laravel `docs` / Twilio Voice contract: `identity` is the sanitized
+/// Twilio Client name (use as SDK `from`); `incoming_allow` reflects JWT incoming grant.
 class VoiceTokenResponse {
   final String? token;
   final String? dialTo;
+  /// Sanitized Twilio Client identity — must match `call.place(from: …)` and JWT.
+  final String? identity;
+  /// Whether the JWT allows incoming `<Client>` legs (dispatch: true; citizen: false).
+  final bool incomingAllow;
+  final bool? success;
   final String? twilioNote;
   final String? serverMessage;
   final int httpStatus;
@@ -141,6 +154,9 @@ class VoiceTokenResponse {
   const VoiceTokenResponse({
     this.token,
     this.dialTo,
+    this.identity,
+    this.incomingAllow = false,
+    this.success,
     this.twilioNote,
     this.serverMessage,
     required this.httpStatus,
@@ -150,9 +166,13 @@ class VoiceTokenResponse {
     final m = CallAvailabilityResponse._fieldSource(json);
     final jwt = CallAvailabilityResponse._nullableString(m['token']) ??
         CallAvailabilityResponse._nullableString(m['access_token']);
+    final incomingRaw = m['incoming_allow'];
     return VoiceTokenResponse(
       token: jwt,
       dialTo: CallAvailabilityResponse._nullableString(m['dial_to']),
+      identity: CallAvailabilityResponse._nullableString(m['identity']),
+      incomingAllow: CallAvailabilityResponse._asBool(incomingRaw),
+      success: m['success'] is bool ? m['success'] as bool : null,
       twilioNote: CallAvailabilityResponse._nullableString(m['twilio_note']),
       serverMessage: CallAvailabilityResponse._nullableString(m['message']),
       httpStatus: httpStatus,

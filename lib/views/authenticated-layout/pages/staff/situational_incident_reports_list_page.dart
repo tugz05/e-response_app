@@ -1,14 +1,18 @@
 import 'package:e_response_app_nemsu/models/situational_incident_report.dart';
-import 'package:e_response_app_nemsu/routes/route_manager.dart';
 import 'package:e_response_app_nemsu/services/shared_preferences/SharedPreferencesService.dart';
 import 'package:e_response_app_nemsu/services/situational_incident_report_service.dart';
 import 'package:e_response_app_nemsu/theme/app_theme.dart';
-import 'package:e_response_app_nemsu/views/authenticated-layout/pages/staff/situational_incident_report_form_args.dart';
+import 'package:e_response_app_nemsu/views/authenticated-layout/pages/staff/situational_incident_report_delete_dialog.dart';
+import 'package:e_response_app_nemsu/views/authenticated-layout/pages/staff/situational_incident_report_detail_page.dart';
+import 'package:e_response_app_nemsu/views/authenticated-layout/pages/staff/situational_incident_report_form_page.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-/// Lists situational incident reports for the signed-in user when they have
-/// staff/rescuer or administrator mobile access.
+/// Lists situational incident reports for staff/rescuer/admin mobile access.
+///
+/// When [embedInStaffShell] is true, loads `GET …/history/all` so operations
+/// staff see every authorized record with stable ids for show/update/delete.
+/// Otherwise loads `GET …/history/{userId}` for the signed-in user only.
 class SituationalIncidentReportsListPage extends StatefulWidget {
   const SituationalIncidentReportsListPage({
     super.key,
@@ -56,7 +60,18 @@ class _SituationalIncidentReportsListPageState
       _error = null;
     });
 
-    final result = await _service.fetchHistory(uid, bearerToken: token);
+    // Staff shell: load organization-wide list (`history/all`) so each row has a
+    // server id for show / update / destroy. Fallback to per-user history if the
+    // aggregate route is unavailable (e.g. older API).
+    var result =
+        widget.embedInStaffShell
+            ? await _service.fetchHistoryAll(bearerToken: token)
+            : await _service.fetchHistory(uid, bearerToken: token);
+    if (!result.isSuccess &&
+        widget.embedInStaffShell &&
+        result.statusCode == 404) {
+      result = await _service.fetchHistory(uid, bearerToken: token);
+    }
 
     if (!mounted) {
       return;
@@ -84,12 +99,23 @@ class _SituationalIncidentReportsListPageState
     });
   }
 
-  /// Staff shell embeds this tab without an inner [Navigator]; use root routes.
-  Future<T?> _pushNamed<T>(String route, {Object? arguments}) {
-    return Navigator.of(context, rootNavigator: true).pushNamed<T>(
-      route,
-      arguments: arguments,
-    );
+  /// Explicit routes avoid `pushNamed` edge cases under [StaffAppShell]; matches
+  /// [CitizenReportDetailPage] navigation pattern.
+  Future<T?> _pushShellRoute<T>(Route<T> route) async {
+    final nav =
+        Navigator.maybeOf(context, rootNavigator: true) ??
+        Navigator.maybeOf(context);
+    if (nav == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Unable to open screen — try restarting the app.'),
+          ),
+        );
+      }
+      return null;
+    }
+    return nav.push<T>(route);
   }
 
   String _dateSubtitle(SituationalIncidentReport r) {
@@ -115,9 +141,10 @@ class _SituationalIncidentReportsListPageState
       );
       return;
     }
-    final changed = await _pushNamed<bool>(
-      RouteManager.situationalIncidentReportDetail,
-      arguments: id,
+    final changed = await _pushShellRoute<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => SituationalIncidentReportDetailPage(reportId: id),
+      ),
     );
     if (!mounted) {
       return;
@@ -130,11 +157,23 @@ class _SituationalIncidentReportsListPageState
   Future<void> _openEdit(SituationalIncidentReport r) async {
     final id = r.id;
     if (id == null) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'This record has no server id yet — pull to refresh or contact support.',
+          ),
+        ),
+      );
       return;
     }
-    final changed = await _pushNamed<bool>(
-      RouteManager.situationalIncidentReportForm,
-      arguments: SituationalIncidentReportFormArgs(existingId: id),
+    final changed = await _pushShellRoute<bool>(
+      MaterialPageRoute<bool>(
+        builder:
+            (_) => SituationalIncidentReportFormPage(existingId: id),
+      ),
     );
     if (!mounted) {
       return;
@@ -147,6 +186,16 @@ class _SituationalIncidentReportsListPageState
   Future<void> _confirmDelete(SituationalIncidentReport r) async {
     final id = r.id;
     if (id == null) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'This record has no server id yet — pull to refresh or contact support.',
+          ),
+        ),
+      );
       return;
     }
     final creds = await _prefs.getCredentials();
@@ -155,31 +204,11 @@ class _SituationalIncidentReportsListPageState
       return;
     }
 
-    final ok =
-        await showDialog<bool>(
-          context: context,
-          builder:
-              (ctx) => AlertDialog(
-                title: const Text('Delete report?'),
-                content: Text(
-                  'Remove "${r.incidentType ?? 'Incident #$id'}" permanently?',
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(ctx, false),
-                    child: const Text('Cancel'),
-                  ),
-                  FilledButton(
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppColors.accent,
-                    ),
-                    onPressed: () => Navigator.pop(ctx, true),
-                    child: const Text('Delete'),
-                  ),
-                ],
-              ),
-        ) ??
-        false;
+    final ok = await confirmDeleteSituationalIncidentReport(
+      context,
+      recordTitle: r.incidentType ?? 'Incident #$id',
+      recordId: id,
+    );
 
     if (!ok || !mounted) {
       return;
@@ -208,9 +237,10 @@ class _SituationalIncidentReportsListPageState
   }
 
   Future<void> _openNewReport() async {
-    await _pushNamed(
-      RouteManager.situationalIncidentReportForm,
-      arguments: const SituationalIncidentReportFormArgs(),
+    await _pushShellRoute<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => const SituationalIncidentReportFormPage(),
+      ),
     );
     _load();
   }
@@ -509,49 +539,44 @@ class _IncidentReportListCard extends StatelessWidget {
                                 Icons.more_vert_rounded,
                                 color: AppColors.textMuted,
                               ),
+                              position: PopupMenuPosition.under,
                               onSelected: (value) {
                                 switch (value) {
                                   case 'view':
                                     onOpen();
+                                    break;
                                   case 'edit':
                                     onEdit();
+                                    break;
                                   case 'delete':
                                     onDelete();
+                                    break;
                                 }
                               },
                               itemBuilder:
                                   (ctx) => [
-                                    const PopupMenuItem(
+                                    const PopupMenuItem<String>(
                                       value: 'view',
-                                      child: ListTile(
-                                        leading: Icon(Icons.visibility_rounded),
-                                        title: Text('View details'),
-                                        contentPadding: EdgeInsets.zero,
+                                      child: _SirCardMenuRow(
+                                        icon: Icons.visibility_rounded,
+                                        label: 'View details',
                                       ),
                                     ),
-                                    const PopupMenuItem(
+                                    const PopupMenuItem<String>(
                                       value: 'edit',
-                                      child: ListTile(
-                                        leading: Icon(Icons.edit_rounded),
-                                        title: Text('Edit'),
-                                        contentPadding: EdgeInsets.zero,
+                                      child: _SirCardMenuRow(
+                                        icon: Icons.edit_rounded,
+                                        label: 'Edit',
                                       ),
                                     ),
-                                    PopupMenuItem(
+                                    PopupMenuItem<String>(
                                       value: 'delete',
-                                      child: ListTile(
-                                        leading: Icon(
-                                          Icons.delete_outline_rounded,
-                                          color: AppColors.accent,
-                                        ),
-                                        title: Text(
-                                          'Delete',
-                                          style: TextStyle(
-                                            color: AppColors.accent,
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                        ),
-                                        contentPadding: EdgeInsets.zero,
+                                      child: _SirCardMenuRow(
+                                        icon: Icons.delete_outline_rounded,
+                                        label: 'Delete',
+                                        iconColor: AppColors.accent,
+                                        labelColor: AppColors.accent,
+                                        labelWeight: FontWeight.w700,
                                       ),
                                     ),
                                   ],
@@ -626,6 +651,46 @@ class _IncidentReportListCard extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Do not use [ListTile] inside [PopupMenuItem] — it intercepts taps so
+/// `onSelected` never runs reliably (Flutter behavior).
+class _SirCardMenuRow extends StatelessWidget {
+  const _SirCardMenuRow({
+    required this.icon,
+    required this.label,
+    this.iconColor,
+    this.labelColor,
+    this.labelWeight,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color? iconColor;
+  final Color? labelColor;
+  final FontWeight? labelWeight;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          Icon(icon, size: 22, color: iconColor ?? AppColors.textPrimary),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                fontWeight: labelWeight ?? FontWeight.w600,
+                color: labelColor ?? AppColors.textPrimary,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

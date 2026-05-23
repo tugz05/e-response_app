@@ -1,8 +1,14 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:developer' as developer;
 import 'dart:io';
 
+import 'package:e_response_app_nemsu/firebase_options.dart';
 import 'package:e_response_app_nemsu/helpers/api_url.dart';
 import 'package:e_response_app_nemsu/services/call_api_service.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
@@ -43,9 +49,34 @@ class TwilioService {
   static final TwilioService _instance = TwilioService._internal();
   factory TwilioService() => _instance;
 
+  /// Citizen→staff incoming-call trace. Flutter DevTools: filter `VoiceIncoming`.
+  /// Android Logcat: `adb logcat -s VoiceIncoming`.
+  static void incomingDebug(String message) {
+    final line = '[VoiceIncoming] $message';
+    debugPrint(line);
+    developer.log(line, name: 'VoiceIncoming');
+  }
+
   bool _isReady = false;
   bool get isReady => _isReady;
   String? _identity;
+
+  /// Twilio Client `from` identity from `GET /api/v1/voice/token` (`identity`), sanitized server-side.
+  /// Falls back to [\_identity] (prefs user id) when absent (legacy token path).
+  String? _voiceClientIdentityFromApi;
+
+  /// Last `incoming_allow` from voice/token when using Bearer (dispatch vs citizen).
+  bool? _lastIncomingAllowFromToken;
+
+  /// Effective Client identity for `setTokens` registration / `call.place(from: …)`.
+  String get _effectiveVoiceClientIdentity =>
+      (_voiceClientIdentityFromApi != null &&
+              _voiceClientIdentityFromApi!.trim().isNotEmpty)
+          ? _voiceClientIdentityFromApi!.trim()
+          : (_identity ?? '').trim();
+
+  /// Whether the last Bearer voice token allowed incoming Client legs (staff dispatch).
+  bool? get lastVoiceIncomingAllow => _lastIncomingAllowFromToken;
 
   /// Last `dial_to` from `GET /api/v1/voice/token` after a successful [init] with Bearer (opaque; may be ring token).
   String? _dialToFromLastVoiceFetch;
@@ -53,6 +84,28 @@ class TwilioService {
   String? get lastVoiceDialTo => _dialToFromLastVoiceFetch;
 
   Stream<CallEvent> get callEvents => TwilioVoice.instance.callEventsListener;
+
+  /// First subscription opens the native EventChannel sink; without it, incoming
+  /// call events are dropped with `eventSink == null` in the Twilio Android plugin.
+  StreamSubscription<CallEvent>? _eventSinkRetentionSub;
+  StreamSubscription<String>? _fcmRefreshSub;
+
+  /// Dedupes concurrent [init] calls (duplicate registration → Twilio 31409 Conflict).
+  Future<TwilioInitResult>? _initFuture;
+
+  /// Last FCM token we successfully bound with Voice.register (avoid redundant re-init).
+  String? _lastRegisteredFcmToken;
+
+  void ensureCallEventsDelivered() {
+    _eventSinkRetentionSub ??= callEvents.listen(
+      (CallEvent e) {
+        incomingDebug('callEvents: $e');
+      },
+      onError: (Object e, StackTrace st) {
+        incomingDebug('callEvents error: $e');
+      },
+    );
+  }
 
   void Function(String message)? onLog;
 
@@ -67,13 +120,102 @@ class TwilioService {
     _log('[TwilioService] Loaded identity: $_identity');
   }
 
+  /// Ensures `Firebase.initializeApp()` ran (needed for FCM / incoming Voice invites).
+  /// Returns false if setup is missing (e.g. no `google-services.json` / FlutterFire options).
+  Future<bool> _ensureFirebaseApp() async {
+    if (kIsWeb) return false;
+    if (!(Platform.isAndroid || Platform.isIOS)) return false;
+    try {
+      if (Firebase.apps.isEmpty) {
+        await Firebase.initializeApp(
+          options: DefaultFirebaseOptions.currentPlatform,
+        );
+      }
+      return Firebase.apps.isNotEmpty;
+    } catch (e) {
+      _log(
+        '[TwilioService] Firebase.initializeApp failed ($e). '
+        'Add android/app/google-services.json (Firebase Console → Android app) '
+        'and apply the Google Services Gradle plugin, or run `flutterfire configure`.',
+      );
+      return false;
+    }
+  }
+
+  /// FCM (Android) / FCM→APNs (iOS) token for Twilio `Voice.register`, **not** the Voice JWT.
+  Future<String?> _voiceMessagingDeviceToken() async {
+    if (kIsWeb) return null;
+    if (!(Platform.isAndroid || Platform.isIOS)) return null;
+
+    final firebaseReady = await _ensureFirebaseApp();
+    if (!firebaseReady) {
+      return null;
+    }
+
+    try {
+      if (Platform.isAndroid) {
+        await Permission.notification.request();
+      }
+      final messaging = FirebaseMessaging.instance;
+      await messaging.requestPermission(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+      final token = await messaging.getToken();
+      if (token != null && token.isNotEmpty) {
+        _log('[TwilioService] Messaging token acquired (${token.length} chars).');
+      }
+      return token;
+    } catch (e) {
+      _log('[TwilioService] Messaging getToken failed: $e');
+      return null;
+    }
+  }
+
+  void _ensureFcmRefreshListener() {
+    if (!Platform.isAndroid && !Platform.isIOS) return;
+    if (Firebase.apps.isEmpty) {
+      return;
+    }
+    try {
+      _fcmRefreshSub ??= FirebaseMessaging.instance.onTokenRefresh.listen((
+        newToken,
+      ) async {
+        if (newToken.isEmpty) return;
+        if (newToken == _lastRegisteredFcmToken) {
+          _log('[TwilioService] FCM refresh ignored (same token as registered).');
+          return;
+        }
+        _log('[TwilioService] FCM token refresh; re-registering Voice.');
+        final prefs = await SharedPreferences.getInstance();
+        final t = prefs.getString('token');
+        if (t != null && t.trim().isNotEmpty) {
+          await init(bearerToken: t);
+        }
+      });
+    } catch (e) {
+      _log('[TwilioService] FCM refresh listener not attached: $e');
+    }
+  }
+
   /// Registers Twilio Voice with a JWT from [bearerToken] (`GET /api/v1/voice/token`)
   /// or, if [bearerToken] is null/empty, legacy `GET /twilio/token?identity=…`.
   ///
-  /// On failure, [TwilioInitResult.failureMessage] explains the real cause (token,
-  /// permissions, or Android phone account / ConnectionService).
-  Future<TwilioInitResult> init({String? bearerToken}) async {
+  /// Concurrent calls share one registration pass (prevents Twilio **31409 Conflict**
+  /// / duplicate FCM binding).
+  Future<TwilioInitResult> init({String? bearerToken}) {
+    _initFuture ??=
+        _performInit(bearerToken).whenComplete(() {
+          _initFuture = null;
+        });
+    return _initFuture!;
+  }
+
+  Future<TwilioInitResult> _performInit(String? bearerToken) async {
     _isReady = false;
+    _voiceClientIdentityFromApi = null;
+    _lastIncomingAllowFromToken = null;
 
     if (_identity == null) await loadIdentity();
     if (_identity == null || _identity!.isEmpty) {
@@ -102,6 +244,13 @@ class TwilioService {
           'continuing for in-app outbound VoIP.',
         );
       }
+      // VoiceFirebaseMessagingService drops incoming invites without these + PhoneAccount.
+      try {
+        await TwilioVoice.instance.requestReadPhoneStatePermission();
+        await TwilioVoice.instance.requestReadPhoneNumbersPermission();
+      } catch (e) {
+        _log('[TwilioService] requestReadPhone* permission channel: $e');
+      }
     }
 
     String? jwt;
@@ -120,6 +269,13 @@ class TwilioService {
         );
         _dialToFromLastVoiceFetch = null;
         final apiHint = voice.serverMessage;
+        if (voice.httpStatus == 503) {
+          return TwilioInitResult.failure(
+            apiHint != null && apiHint.isNotEmpty
+                ? 'Voice service unavailable: $apiHint'
+                : 'Voice service unavailable (HTTP 503). Check server Twilio configuration.',
+          );
+        }
         if (apiHint != null && apiHint.isNotEmpty) {
           return TwilioInitResult.failure(
             'Voice sign-in was rejected (HTTP ${voice.httpStatus}): $apiHint',
@@ -139,8 +295,18 @@ class TwilioService {
       jwt = voice.token;
       final d = voice.dialTo?.trim();
       _dialToFromLastVoiceFetch = (d != null && d.isNotEmpty) ? d : null;
+      final apiIdentity = voice.identity?.trim();
+      _voiceClientIdentityFromApi =
+          (apiIdentity != null && apiIdentity.isNotEmpty) ? apiIdentity : null;
+      _lastIncomingAllowFromToken = voice.incomingAllow;
+      _log(
+        '[TwilioService] voice/token identity=${_effectiveVoiceClientIdentity.isEmpty ? '(empty)' : _effectiveVoiceClientIdentity} '
+        'incoming_allow=${voice.incomingAllow}',
+      );
     } else {
       _dialToFromLastVoiceFetch = null;
+      _voiceClientIdentityFromApi = null;
+      _lastIncomingAllowFromToken = null;
       jwt = await _fetchLegacyToken(_identity!);
       if (jwt == null) {
         _log('[TwilioService] ❌ Failed to fetch Twilio access token (legacy).');
@@ -148,6 +314,13 @@ class TwilioService {
           'Voice token could not be loaded. Sign in again, or check server /twilio/token.',
         );
       }
+    }
+
+    if (_effectiveVoiceClientIdentity.isEmpty) {
+      _log('[TwilioService] ❌ No Twilio Client identity (prefs id / voice/token identity).');
+      return const TwilioInitResult.failure(
+        'This device has no valid voice identity. Sign out and sign in again.',
+      );
     }
 
     if (jwt == null || jwt.isEmpty) {
@@ -158,9 +331,26 @@ class TwilioService {
     }
 
     try {
+      final messagingToken = await _voiceMessagingDeviceToken();
+      final deviceToken =
+          (messagingToken != null && messagingToken.isNotEmpty)
+              ? messagingToken
+              : jwt;
+      if (messagingToken == null || messagingToken.isEmpty) {
+        _log(
+          '[TwilioService] ⚠️ No FCM token — Twilio cannot push incoming call invites. '
+          'Add Firebase (google-services.json + com.google.gms.google-services), '
+          'then rebuild. Using JWT placeholder will not ring staff devices.',
+        );
+      }
+
+      // Do not call unregister() before every setTokens — native register/unregister is async,
+      // so that produced "registered" then "un-registered" and broke incoming. Serialized [init]
+      // avoids Twilio 31409 duplicate registration instead.
+
       await TwilioVoice.instance.setTokens(
         accessToken: jwt,
-        deviceToken: jwt,
+        deviceToken: deviceToken,
       );
 
       final registered = await TwilioVoice.instance.registerPhoneAccount();
@@ -170,7 +360,18 @@ class TwilioService {
           '(in-app outbound still works; incoming push may be limited).',
         );
       }
+
+      _lastRegisteredFcmToken =
+          (messagingToken != null && messagingToken.isNotEmpty)
+              ? messagingToken
+              : null;
+      _ensureFcmRefreshListener();
+
       _isReady = true;
+      incomingDebug(
+        'init OK identity=$_effectiveVoiceClientIdentity incomingAllow=$_lastIncomingAllowFromToken '
+        'fcmRegistered=${_lastRegisteredFcmToken != null} dialTo=$_dialToFromLastVoiceFetch',
+      );
       _log('[TwilioService] ✅ Twilio Voice initialized.');
       return const TwilioInitResult.success();
     } catch (e) {
@@ -178,6 +379,25 @@ class TwilioService {
       return TwilioInitResult.failure(
         'Voice setup failed: ${e.toString().length > 160 ? '${e.toString().substring(0, 160)}…' : e}',
       );
+    }
+  }
+
+  /// Unregisters this device from Twilio Voice (e.g. before logout). Uses the last
+  /// access token from [setTokens] when [accessToken] is omitted.
+  Future<void> unregisterVoice({String? accessToken}) async {
+    await _fcmRefreshSub?.cancel();
+    _fcmRefreshSub = null;
+    await _eventSinkRetentionSub?.cancel();
+    _eventSinkRetentionSub = null;
+    try {
+      await TwilioVoice.instance.unregister(accessToken: accessToken);
+      _isReady = false;
+      _lastRegisteredFcmToken = null;
+      _voiceClientIdentityFromApi = null;
+      _lastIncomingAllowFromToken = null;
+      _log('[TwilioService] Unregistered from Voice.');
+    } catch (e) {
+      _log('[TwilioService] unregisterVoice failed: $e');
     }
   }
 
@@ -248,8 +468,8 @@ class TwilioService {
   /// Caller must run availability + [CallApiService.setCallerLocation] per Laravel flow first.
   Future<void> placeOutgoingConnect(String toOpaqueFromApi) async {
     if (_identity == null) await loadIdentity();
-    if (_identity == null || _identity!.isEmpty) {
-      _log('[TwilioService] ❌ No identity found in SharedPreferences.');
+    if (_effectiveVoiceClientIdentity.isEmpty) {
+      _log('[TwilioService] ❌ No Twilio Client identity for outbound call.');
       return;
     }
     if (!_isReady) {
@@ -264,8 +484,10 @@ class TwilioService {
     }
 
     try {
-      await TwilioVoice.instance.call.place(from: _identity!, to: to);
-      _log('[TwilioService] 📞 Calling "${_identity!}" → "$to" (verbatim To) …');
+      final fromId = _effectiveVoiceClientIdentity;
+      incomingDebug('placeOutgoingConnect → To="$to" from="$fromId"');
+      await TwilioVoice.instance.call.place(from: fromId, to: to);
+      _log('[TwilioService] 📞 Calling "$fromId" → "$to" (verbatim To) …');
     } catch (e) {
       _log('[TwilioService] ❌ Error making call: $e');
     }

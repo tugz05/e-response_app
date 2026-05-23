@@ -95,7 +95,7 @@ class _MessageReportScreenState extends State<MessageReportScreen> {
     try {
       final ImagePicker picker = ImagePicker();
       final List<XFile> images = await picker.pickMultiImage();
-      if (images == null || images.isEmpty) return;
+      if (images.isEmpty) return;
       setState(() {
         final remaining = _kMaxReportImages - _selectedImages.length;
         _selectedImages.addAll(images.take(remaining));

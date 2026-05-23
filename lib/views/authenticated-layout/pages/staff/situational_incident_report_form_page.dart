@@ -3,6 +3,7 @@ import 'package:e_response_app_nemsu/models/situational_incident_report.dart';
 import 'package:e_response_app_nemsu/services/shared_preferences/SharedPreferencesService.dart';
 import 'package:e_response_app_nemsu/services/situational_incident_report_service.dart';
 import 'package:e_response_app_nemsu/theme/app_theme.dart';
+import 'package:e_response_app_nemsu/views/authenticated-layout/pages/staff/situational_incident_report_delete_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
@@ -136,23 +137,14 @@ class _SituationalIncidentReportFormPageState
         tx['citizen_name'] ??
         tx['name'] ??
         (tx['user'] is Map ? (tx['user'] as Map)['name'] : null);
-    final uid = tx['user_id'] ?? tx['userId'];
-    final rid = tx['id'];
     _callerSource.text =
         (name != null && name.toString().trim().isNotEmpty)
             ? name.toString().trim()
             : '';
 
-    final details = tx['details']?.toString().trim() ?? '';
-    final status = tx['status']?.toString().trim() ?? '';
-    final buf = StringBuffer();
-    if (details.isNotEmpty) {
-      buf.writeln(details);
-    }
-    if (status.isNotEmpty) {
-      buf.writeln('Citizen report status: $status');
-    }
-    _details.text = buf.toString().trim();
+    // Narrative fields stay empty while drafting; staff records the incident story here.
+    _details.clear();
+    _examNotes.clear();
 
     _location.text = tx['address']?.toString().trim() ?? '';
 
@@ -163,14 +155,6 @@ class _SituationalIncidentReportFormPageState
         _dateTimeReceived = dt.toLocal();
       }
     }
-
-    final meta = <String>[
-      'Intake metadata (do not duplicate in caller field)',
-      'Channel: ${isMessage ? 'In-app message' : 'Voice call'}',
-      if (uid != null) 'User ID: $uid',
-      if (rid != null) 'Citizen report #: $rid',
-    ].join('\n');
-    _examNotes.text = '$meta\n\nPrefilled from citizen intake.';
   }
 
   /// Caller field is restricted to a human full name (no IDs or channel text).
@@ -365,6 +349,14 @@ class _SituationalIncidentReportFormPageState
       );
       return;
     }
+    if (_location.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Incident location is required'),
+        ),
+      );
+      return;
+    }
 
     final creds = await _prefs.getCredentials();
     if (!mounted) {
@@ -464,31 +456,14 @@ class _SituationalIncidentReportFormPageState
     if (id == null) {
       return;
     }
-    final ok =
-        await showDialog<bool>(
-          context: context,
-          builder:
-              (ctx) => AlertDialog(
-                title: const Text('Delete report?'),
-                content: const Text(
-                  'This incident report will be removed from your history.',
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(ctx, false),
-                    child: const Text('Cancel'),
-                  ),
-                  FilledButton(
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppColors.accent,
-                    ),
-                    onPressed: () => Navigator.pop(ctx, true),
-                    child: const Text('Delete'),
-                  ),
-                ],
-              ),
-        ) ??
-        false;
+    final ok = await confirmDeleteSituationalIncidentReport(
+      context,
+      recordTitle:
+          _incidentType.text.trim().isEmpty
+              ? 'Incident #$id'
+              : _incidentType.text.trim(),
+      recordId: id,
+    );
     if (!ok || !mounted) {
       return;
     }
@@ -678,7 +653,9 @@ class _SituationalIncidentReportFormPageState
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text(
-              _editingId != null ? 'Edit situational report' : 'Situational incident report',
+              _editingId != null
+                  ? 'Edit situational report'
+                  : 'Situational incident report',
               style: theme.textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.w800,
                 color: Colors.white,
@@ -880,12 +857,15 @@ class _SituationalIncidentReportFormPageState
                           const SizedBox(height: 14),
                           TextFormField(
                             controller: _location,
-                            decoration: _fieldDeco('Incident location'),
+                            decoration: _fieldDeco(
+                              'Incident location',
+                              hint: 'Street, barangay, or landmark area where the incident occurred',
+                            ),
                             textCapitalization: TextCapitalization.sentences,
                             validator:
                                 (v) =>
                                     (v == null || v.trim().isEmpty)
-                                        ? 'Required'
+                                        ? 'Incident location is required'
                                         : null,
                           ),
                           const SizedBox(height: 14),

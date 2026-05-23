@@ -100,21 +100,43 @@ class SituationalIncidentReport {
     return null;
   }
 
+  /// Flattens Laravel / JSON:API shapes so [fromJson] gets snake_case fields + id.
+  /// Handles `{ data: { … } }`, `{ id, attributes: { … } }`, and plain maps.
+  static Map<String, dynamic> _normalizeApiMap(Map<String, dynamic> raw) {
+    var row = Map<String, dynamic>.from(raw);
+    final nested = row['data'];
+    if (nested is Map) {
+      row = Map<String, dynamic>.from(nested);
+    }
+    final attrs = row['attributes'];
+    if (attrs is Map) {
+      final merged = Map<String, dynamic>.from(attrs);
+      final idVal = row['id'];
+      if (idVal != null) {
+        merged.putIfAbsent('id', () => idVal);
+      }
+      row = merged;
+    }
+    return row;
+  }
+
   static SituationalIncidentReport? fromJson(Map<String, dynamic>? m) {
     if (m == null) {
       return null;
     }
 
-    var isAlert = _readBool(m['is_alert_response']);
-    var isVerbal = _readBool(m['is_verbal_response']);
-    var isPain = _readBool(m['is_pain_response']);
-    var isUnconsciousFlag = _readBool(m['is_unconscious']);
+    final row = _normalizeApiMap(m);
+
+    var isAlert = _readBool(row['is_alert_response']);
+    var isVerbal = _readBool(row['is_verbal_response']);
+    var isPain = _readBool(row['is_pain_response']);
+    var isUnconsciousFlag = _readBool(row['is_unconscious']);
 
     if (isAlert == null &&
         isVerbal == null &&
         isPain == null &&
         isUnconsciousFlag == null) {
-      final legacy = _readString(m['avpu'])?.toLowerCase();
+      final legacy = _readString(row['avpu'])?.toLowerCase();
       isAlert = legacy == 'alert';
       isVerbal = legacy == 'verbal';
       isPain = legacy == 'pain';
@@ -125,54 +147,54 @@ class SituationalIncidentReport {
 
     return SituationalIncidentReport(
       id:
-          _readInt(m['id']) ??
-          _readInt(m['situational_incident_report_id']) ??
-          _readInt(m['report_id']),
-      userId: _readInt(m['user_id']),
-      incidentType: _readString(m['incident_type']),
-      callerSourceOfInformation: _readString(m['caller_source_of_information']),
-      receiver: _readString(m['receiver']),
-      dateTimeReceived: _readDateTime(m['date_time_received']),
-      timeOfResponse: _readString(m['time_of_response']),
-      location: _readString(m['location']),
-      landmark: _readString(m['landmark']),
-      detailsOfIncident: _readString(m['details_of_incident']),
-      vehiclesInvolved: _readString(m['vehicles_involved']),
+          _readInt(row['id']) ??
+          _readInt(row['situational_incident_report_id']) ??
+          _readInt(row['report_id']),
+      userId: _readInt(row['user_id']),
+      incidentType: _readString(row['incident_type']),
+      callerSourceOfInformation: _readString(row['caller_source_of_information']),
+      receiver: _readString(row['receiver']),
+      dateTimeReceived: _readDateTime(row['date_time_received']),
+      timeOfResponse: _readString(row['time_of_response']),
+      location: _readString(row['location']),
+      landmark: _readString(row['landmark']),
+      detailsOfIncident: _readString(row['details_of_incident']),
+      vehiclesInvolved: _readString(row['vehicles_involved']),
       isAlertResponse: coalesce(isAlert),
       isVerbalResponse: coalesce(isVerbal),
       isPainResponse: coalesce(isPain),
       isUnconscious: coalesce(isUnconsciousFlag),
       hasDeformity: coalesce(
-        _readBool(m['has_deformity']) ?? _readBool(m['injury_deformity']),
+        _readBool(row['has_deformity']) ?? _readBool(row['injury_deformity']),
       ),
       hasContusion: coalesce(
-        _readBool(m['has_contusion']) ?? _readBool(m['injury_contusion']),
+        _readBool(row['has_contusion']) ?? _readBool(row['injury_contusion']),
       ),
       hasAbrasion: coalesce(
-        _readBool(m['has_abrasion']) ?? _readBool(m['injury_abrasion']),
+        _readBool(row['has_abrasion']) ?? _readBool(row['injury_abrasion']),
       ),
       hasPuncturePenetration: coalesce(
-        _readBool(m['has_puncture_penetration']) ??
-            _readBool(m['injury_puncture_penetration']),
+        _readBool(row['has_puncture_penetration']) ??
+            _readBool(row['injury_puncture_penetration']),
       ),
       hasTenderness: coalesce(
-        _readBool(m['has_tenderness']) ?? _readBool(m['injury_tenderness']),
+        _readBool(row['has_tenderness']) ?? _readBool(row['injury_tenderness']),
       ),
       hasLaceration: coalesce(
-        _readBool(m['has_laceration']) ?? _readBool(m['injury_laceration']),
+        _readBool(row['has_laceration']) ?? _readBool(row['injury_laceration']),
       ),
       hasSwelling: coalesce(
-        _readBool(m['has_swelling']) ?? _readBool(m['injury_swelling']),
+        _readBool(row['has_swelling']) ?? _readBool(row['injury_swelling']),
       ),
-      examinationNotes: _readString(m['examination_notes']),
-      actionTaken: _readString(m['action_taken']),
-      referToHospital: _readString(m['refer_to_hospital']),
-      timeTransported: _readString(m['time_transported']),
-      nameOfHospital: _readString(m['name_of_hospital']),
-      nameOfResponders: _readString(m['name_of_responders']),
-      nameOfResponseVehicle: _readString(m['name_of_response_vehicle']),
-      createdAt: _readString(m['created_at']),
-      updatedAt: _readString(m['updated_at']),
+      examinationNotes: _readString(row['examination_notes']),
+      actionTaken: _readString(row['action_taken']),
+      referToHospital: _readString(row['refer_to_hospital']),
+      timeTransported: _readString(row['time_transported']),
+      nameOfHospital: _readString(row['name_of_hospital']),
+      nameOfResponders: _readString(row['name_of_responders']),
+      nameOfResponseVehicle: _readString(row['name_of_response_vehicle']),
+      createdAt: _readString(row['created_at']),
+      updatedAt: _readString(row['updated_at']),
     );
   }
 
@@ -213,7 +235,8 @@ class SituationalIncidentReport {
       m['date_time_received'] = dateTimeReceived!.toUtc().toIso8601String();
     }
     put('time_of_response', timeOfResponse?.trim());
-    put('location', location?.trim());
+    // Always include location — omission can cause APIs to skip persisting it on PUT.
+    m['location'] = location?.trim() ?? '';
     put('landmark', landmark?.trim());
     put('details_of_incident', detailsOfIncident?.trim());
     put('vehicles_involved', vehiclesInvolved?.trim());

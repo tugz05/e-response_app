@@ -1,4 +1,8 @@
 import 'package:e_response_app_nemsu/helpers/windows_camera_delegate.dart';
+import 'package:e_response_app_nemsu/firebase_options.dart';
+import 'package:e_response_app_nemsu/services/app_push_service.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:e_response_app_nemsu/helpers/first_run.dart';
@@ -39,6 +43,25 @@ void configureDesktopCameraCapture() {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   configureDesktopCameraCapture();
+
+  // Incoming Twilio Voice invites on Android/iOS require Firebase Cloud Messaging.
+  if (!kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS)) {
+    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+    try {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+      await AppPushService.instance.initialize(navigatorKey: appNavigatorKey);
+    } catch (e, st) {
+      debugPrint(
+        '[main] Firebase.initializeApp failed: $e\n'
+        'Configure lib/firebase_options.dart (run `flutterfire configure`) '
+        'and add android/app/google-services.json.\n$st',
+      );
+    }
+  }
 
   // 1) Check if it's the very first run
   final firstTime = await FirstRun.isFirstRun();

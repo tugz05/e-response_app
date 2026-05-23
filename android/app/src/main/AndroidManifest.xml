@@ -1,4 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     package="com.example.e_response_app_nemsu">
 
     <!-- Only keep permissions that are needed for your app -->
@@ -29,6 +30,13 @@
         android:label="E-Response Tandag"
         android:name="${applicationName}"
         android:icon="@mipmap/launcher_icon">
+
+        <!-- firebase_messaging registers this too; it steals Twilio VoIP data messages.
+             We only use FirebaseMessaging for getToken/onTokenRefresh in Dart. -->
+        <service
+            android:name="io.flutter.plugins.firebase.messaging.FlutterFirebaseMessagingService"
+            tools:node="remove" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -49,6 +57,16 @@
         </activity>
 
         <!-- DO NOT declare your own ConnectionService here; Twilio plugin does this internally -->
+
+        <!-- Required for Twilio incoming VoIP: deliver FCM to Voice SDK (see twilio_voice README). -->
+        <service
+            android:name="com.twilio.twilio_voice.fcm.VoiceFirebaseMessagingService"
+            android:exported="false"
+            android:stopWithTask="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
 
         <meta-data
             android:name="flutterEmbedding"
