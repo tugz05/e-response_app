@@ -46,3 +46,4 @@ app.*.map.json
 *.hprof
 *.hprof
 packages/twilio_voice/example/defines.local.json
+lib/routes
