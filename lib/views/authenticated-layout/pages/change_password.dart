@@ -102,32 +102,35 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Change Password')),
       backgroundColor: AppColors.background,
-      body: SingleChildScrollView(
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 50),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                VTextField(
-                  hintText: "Current Password",
-                  controller: _currentPasswordController,
-                  isPassword: true,
-                ),
-                SizedBox(height: 10),
-                VTextField(
-                  hintText: "New Password",
-                  controller: _newPasswordController,
-                  isPassword: true,
-                ),
-                SizedBox(height: 30),
-                VButton(
-                  onPressed: _isLoading ? () {} : _changePassword,
-                   isLoading: _isLoading, // Set loading state
-                  text: "Change Password",
-                ),
-              ],
+      body: SafeArea(
+        top: false,
+        child: SingleChildScrollView(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 50),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  VTextField(
+                    hintText: "Current Password",
+                    controller: _currentPasswordController,
+                    isPassword: true,
+                  ),
+                  SizedBox(height: 10),
+                  VTextField(
+                    hintText: "New Password",
+                    controller: _newPasswordController,
+                    isPassword: true,
+                  ),
+                  SizedBox(height: 30),
+                  VButton(
+                    onPressed: _isLoading ? () {} : _changePassword,
+                    isLoading: _isLoading,
+                    text: "Change Password",
+                  ),
+                ],
+              ),
             ),
           ),
         ),

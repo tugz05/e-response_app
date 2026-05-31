@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:e_response_app_nemsu/helpers/api_url.dart';
 import 'package:e_response_app_nemsu/theme/app_theme.dart';
@@ -33,6 +34,7 @@ class _PagesState extends State<Pages> with WidgetsBindingObserver {
   List<dynamic> _items = [];
   bool _isLoading = true;
   String? _errorMessage;
+  bool _isOffline = false;
 
   @override
   void initState() {
@@ -59,16 +61,16 @@ class _PagesState extends State<Pages> with WidgetsBindingObserver {
       setState(() {
         _isLoading = true;
         _errorMessage = null;
+        _isOffline = false;
       });
     }
 
     final url = Uri.parse(ApiUrl.getServiceUrl(widget.apiUrl));
     try {
-      final response = await http.get(url);
+      final response =
+          await http.get(url).timeout(const Duration(seconds: 15));
 
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
@@ -78,16 +80,24 @@ class _PagesState extends State<Pages> with WidgetsBindingObserver {
         });
       } else {
         setState(() {
-          _errorMessage = 'Unable to load content right now.';
+          _errorMessage =
+              'The server returned an error (${response.statusCode}). '
+              'Pull down to refresh.';
           _isLoading = false;
         });
       }
-    } catch (_) {
-      if (!mounted) {
-        return;
-      }
+    } on SocketException {
+      if (!mounted) return;
       setState(() {
-        _errorMessage = 'Check your connection and try again.';
+        _isOffline = true;
+        _errorMessage =
+            'No internet connection. Check your network and try again.';
+        _isLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = 'Could not load content. Try again.';
         _isLoading = false;
       });
     }
@@ -136,10 +146,10 @@ class _PagesState extends State<Pages> with WidgetsBindingObserver {
             if (_isLoading)
               const ContentLoadingList(itemCount: 4)
             else if (_errorMessage != null)
-              ContentEmptyState(
-                title: 'Could not load content',
+              ContentErrorState(
+                isOffline: _isOffline,
                 message: _errorMessage!,
-                icon: widget.icon,
+                onRetry: fetchItems,
               )
             else if (_items.isEmpty)
               ContentEmptyState(

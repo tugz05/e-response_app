@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:e_response_app_nemsu/helpers/api_url.dart';
@@ -17,6 +18,8 @@ class ListNewsDashboard extends StatefulWidget {
 class _ListNewsDashboardState extends State<ListNewsDashboard> {
   List<dynamic> _news = [];
   bool _isLoading = true;
+  String? _error;
+  bool _isOffline = false;
 
   @override
   void initState() {
@@ -25,30 +28,48 @@ class _ListNewsDashboardState extends State<ListNewsDashboard> {
   }
 
   Future<void> fetchNews() async {
+    if (!mounted) return;
+    setState(() {
+      _isLoading = true;
+      _error = null;
+      _isOffline = false;
+    });
+
     final Uri url = Uri.parse(ApiUrl.getServiceUrl('api/v1/news'));
-    if (mounted) {
-      setState(() => _isLoading = true);
-    }
 
     try {
-      final response = await http.get(url);
+      final response = await http.get(url).timeout(const Duration(seconds: 15));
+
+      if (!mounted) return;
+
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        if (!mounted) {
-          return;
-        }
         setState(() {
           _news = data['data'] ?? [];
+          _isLoading = false;
+        });
+      } else {
+        setState(() {
+          _error =
+              'The server returned an error (${response.statusCode}). '
+              'Pull down to refresh.';
+          _isLoading = false;
         });
       }
+    } on SocketException {
+      if (!mounted) return;
+      setState(() {
+        _isOffline = true;
+        _error =
+            'Check your internet connection and tap "Try again".';
+        _isLoading = false;
+      });
     } catch (_) {
-      if (!mounted) {
-        return;
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (!mounted) return;
+      setState(() {
+        _error = 'Could not load news. Pull down to refresh.';
+        _isLoading = false;
+      });
     }
   }
 
@@ -56,6 +77,14 @@ class _ListNewsDashboardState extends State<ListNewsDashboard> {
   Widget build(BuildContext context) {
     if (_isLoading) {
       return const ContentLoadingList(itemCount: 3);
+    }
+
+    if (_error != null) {
+      return ContentErrorState(
+        isOffline: _isOffline,
+        message: _error!,
+        onRetry: fetchNews,
+      );
     }
 
     if (_news.isEmpty) {
@@ -83,10 +112,9 @@ class _ListNewsDashboardState extends State<ListNewsDashboard> {
           padding: EdgeInsets.only(bottom: index == itemCount - 1 ? 0 : 12),
           child: ContentFeedCard(
             title: title.isEmpty ? 'Untitled update' : title,
-            excerpt:
-                excerpt.isEmpty
-                    ? 'Open this update to read the full details.'
-                    : excerpt,
+            excerpt: excerpt.isEmpty
+                ? 'Open this update to read the full details.'
+                : excerpt,
             dateLabel: dateLabel,
             imageUrl: imageUrl,
             icon: Icons.newspaper_outlined,
@@ -97,9 +125,8 @@ class _ListNewsDashboardState extends State<ListNewsDashboard> {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder:
-                      (context) =>
-                          WebViewScreen(url: cleanedUrl, titleText: title),
+                  builder: (context) =>
+                      WebViewScreen(url: cleanedUrl, titleText: title),
                 ),
               );
             },

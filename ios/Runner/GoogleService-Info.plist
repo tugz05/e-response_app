@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>API_KEY</key>
+	<string>AIzaSyBryvLE3eQQQmadk9jJVadCQWliK6hTVRg</string>
+	<key>GCM_SENDER_ID</key>
+	<string>525072482085</string>
+	<key>PLIST_VERSION</key>
+	<string>1</string>
+	<key>BUNDLE_ID</key>
+	<string>com.example.eResponseAppNemsu</string>
+	<key>PROJECT_ID</key>
+	<string>e-response-tandag</string>
+	<key>STORAGE_BUCKET</key>
+	<string>e-response-tandag.firebasestorage.app</string>
+	<key>IS_ADS_ENABLED</key>
+	<false></false>
+	<key>IS_ANALYTICS_ENABLED</key>
+	<false></false>
+	<key>IS_APPINVITE_ENABLED</key>
+	<true></true>
+	<key>IS_GCM_ENABLED</key>
+	<true></true>
+	<key>IS_SIGNIN_ENABLED</key>
+	<true></true>
+	<key>CLIENT_ID</key>
+	<string>490198227720-k36qvprsguglvghp6cmi5b6nls57k40s.apps.googleusercontent.com</string>
+	<key>REVERSED_CLIENT_ID</key>
+	<string>com.googleusercontent.apps.490198227720-k36qvprsguglvghp6cmi5b6nls57k40s</string>
+	<key>GOOGLE_APP_ID</key>
+	<string>1:525072482085:ios:e6afbcf4880066be1d24cc</string>
+</dict>
+</plist>

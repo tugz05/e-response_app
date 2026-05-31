@@ -15,16 +15,24 @@ import 'package:e_response_app_nemsu/theme/app_theme.dart';
 final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
 
 Future<bool> requestAllPermissions() async {
-  final statuses =
-      await [
-        Permission.microphone,
-        Permission.phone,
-        Permission.locationWhenInUse,
-      ].request();
+  // Permission.phone is Android-only (telecom/phone-account access).
+  // On iOS it doesn't exist and would always return denied, so we skip it.
+  final permissions = [
+    Permission.microphone,
+    Permission.locationWhenInUse,
+    if (defaultTargetPlatform == TargetPlatform.android) Permission.phone,
+  ];
 
-  return statuses[Permission.microphone] == PermissionStatus.granted &&
-      statuses[Permission.phone] == PermissionStatus.granted &&
+  final statuses = await permissions.request();
+
+  final micOk = statuses[Permission.microphone] == PermissionStatus.granted;
+  final locOk =
       statuses[Permission.locationWhenInUse] == PermissionStatus.granted;
+  final phoneOk =
+      defaultTargetPlatform != TargetPlatform.android ||
+      statuses[Permission.phone] == PermissionStatus.granted;
+
+  return micOk && locOk && phoneOk;
 }
 
 void configureDesktopCameraCapture() {
@@ -48,11 +56,13 @@ void main() async {
   if (!kIsWeb &&
       (defaultTargetPlatform == TargetPlatform.android ||
           defaultTargetPlatform == TargetPlatform.iOS)) {
-    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
     try {
-      await Firebase.initializeApp(
-        options: DefaultFirebaseOptions.currentPlatform,
-      );
+      if (Firebase.apps.isEmpty) {
+        await Firebase.initializeApp(
+          options: DefaultFirebaseOptions.currentPlatform,
+        );
+      }
+      FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
       await AppPushService.instance.initialize(navigatorKey: appNavigatorKey);
     } catch (e, st) {
       debugPrint(

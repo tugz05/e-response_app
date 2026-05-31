@@ -110,47 +110,45 @@ class _VerifyPageState extends State<VerifyPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Center(
-        child: Column(
-          children: [
-            VLogo(),
-            SizedBox(height: 30),
-            VCaption(
-              header: "Verify your account",
-              text: "Please enter the code we’ve sent you to verify your account",
-            ),
-            SizedBox(height: 50),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 30),
-              child: Column(
-                children: [
-                  VTextField(
-                    controller: _codeController,
-                    hintText: "Enter Code",
-                  ),
-                  SizedBox(height: 30),
-                  VButton(
-                    isLoading: _isLoading,
-                    onPressed: _isLoading ? () {} : _verifyCode,
-                    text: "Verify Account",
-                  ),
-                  SizedBox(height: 40),
-                  GestureDetector(
-                    onTap: _canResend ? _resendCode : null,
-                    child: Text(
-                      _canResend ? "Resend Code" : "Resend in $_resendCooldown seconds",
-                      style: TextStyle(
-                        fontWeight: FontWeight.w800,
-                        color: _canResend
-                            ? AppColors.primary
-                            : AppColors.textMuted,
-                      ),
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 24),
+            child: Column(
+              children: [
+                VLogo(),
+                const SizedBox(height: 30),
+                VCaption(
+                  header: "Verify your account",
+                  text: "Please enter the code we’ve sent you to verify your account",
+                ),
+                const SizedBox(height: 50),
+                VTextField(
+                  controller: _codeController,
+                  hintText: "Enter Code",
+                ),
+                const SizedBox(height: 30),
+                VButton(
+                  isLoading: _isLoading,
+                  onPressed: _isLoading ? () {} : _verifyCode,
+                  text: "Verify Account",
+                ),
+                const SizedBox(height: 40),
+                GestureDetector(
+                  onTap: _canResend ? _resendCode : null,
+                  child: Text(
+                    _canResend
+                        ? "Resend Code"
+                        : "Resend in $_resendCooldown seconds",
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      color: _canResend ? AppColors.primary : AppColors.textMuted,
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );

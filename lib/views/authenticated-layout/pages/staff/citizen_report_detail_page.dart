@@ -2,6 +2,7 @@ import 'package:e_response_app_nemsu/models/citizen_report_detail.dart';
 import 'package:e_response_app_nemsu/routes/route_manager.dart';
 import 'package:e_response_app_nemsu/services/citizen_report_service.dart';
 import 'package:e_response_app_nemsu/services/shared_preferences/SharedPreferencesService.dart';
+import 'package:e_response_app_nemsu/services/tracking_service.dart';
 import 'package:e_response_app_nemsu/theme/app_theme.dart';
 import 'package:e_response_app_nemsu/views/authenticated-layout/pages/staff/situational_incident_report_form_args.dart';
 import 'package:flutter/material.dart';
@@ -26,6 +27,7 @@ class _CitizenReportDetailPageState extends State<CitizenReportDetailPage> {
   CitizenReportDetail? _detail;
   bool _loading = true;
   String? _error;
+  bool _startingRescue = false;
 
   @override
   void initState() {
@@ -84,6 +86,69 @@ class _CitizenReportDetailPageState extends State<CitizenReportDetailPage> {
     );
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
+
+  /// True when the report has coordinates and is not yet completed/resolved.
+  bool get _canStartRescue {
+    final d = _detail;
+    if (d == null) return false;
+    if (double.tryParse(d.latitude ?? '') == null) return false;
+    if (double.tryParse(d.longitude ?? '') == null) return false;
+    final s = d.status?.toLowerCase() ?? '';
+    return !s.contains('complet') && !s.contains('resolv');
+  }
+
+  Future<void> _startRescue() async {
+    final d = _detail;
+    if (d == null || !_canStartRescue) return;
+
+    final lat = double.parse(d.latitude!);
+    final lng = double.parse(d.longitude!);
+
+    setState(() => _startingRescue = true);
+
+    try {
+      final creds = await _prefs.getCredentials();
+      final rescuerIdStr = creds['id'] ?? '';
+      final rescuerId = int.tryParse(rescuerIdStr);
+      if (rescuerId == null || !mounted) return;
+
+      await TrackingService.startSession(
+        reportId: d.id,
+        residentUserId: d.userId ?? 0,
+        rescuerUserId: rescuerId,
+        residentLat: lat,
+        residentLng: lng,
+      );
+
+      if (!mounted) return;
+
+      final residentName = (d.reportedBy?.trim().isNotEmpty == true)
+          ? d.reportedBy!.trim()
+          : (d.user?.name?.trim().isNotEmpty == true
+              ? d.user!.name!.trim()
+              : 'Resident');
+
+      await Navigator.of(context).pushNamed(
+        RouteManager.rescueTracking,
+        arguments: TrackingArgs(
+          reportId: d.id,
+          role: TrackingRole.rescuer,
+          residentLat: lat,
+          residentLng: lng,
+          residentName: residentName,
+          residentUserId: d.userId,
+          rescuerUserId: rescuerId,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not start rescue: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _startingRescue = false);
     }
   }
 
@@ -326,16 +391,45 @@ class _CitizenReportDetailPageState extends State<CitizenReportDetailPage> {
                 child: SafeArea(
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
-                    child: FilledButton.icon(
-                      onPressed: _draftSituational,
-                      icon: const Icon(Icons.edit_note_rounded),
-                      label: const Text('Draft situational report'),
-                      style: FilledButton.styleFrom(
-                        minimumSize: const Size.fromHeight(54),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (_canStartRescue) ...[
+                          FilledButton.icon(
+                            onPressed: _startingRescue ? null : _startRescue,
+                            icon: _startingRescue
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Icon(Icons.navigation_rounded),
+                            label: const Text('Start Rescue Navigation'),
+                            style: FilledButton.styleFrom(
+                              minimumSize: const Size.fromHeight(50),
+                              backgroundColor: AppColors.success,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                        ],
+                        FilledButton.icon(
+                          onPressed: _draftSituational,
+                          icon: const Icon(Icons.edit_note_rounded),
+                          label: const Text('Draft situational report'),
+                          style: FilledButton.styleFrom(
+                            minimumSize: const Size.fromHeight(50),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                          ),
                         ),
-                      ),
+                      ],
                     ),
                   ),
                 ),

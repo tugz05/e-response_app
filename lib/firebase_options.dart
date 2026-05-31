@@ -39,13 +39,12 @@ class DefaultFirebaseOptions {
     storageBucket: 'e-response-tandag.firebasestorage.app',
   );
 
-  /// TODO: Run `flutterfire configure` or paste from Firebase Console (iOS app).
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'REPLACE_WITH_FIREBASE_IOS_API_KEY',
-    appId: 'REPLACE_WITH_FIREBASE_IOS_APP_ID',
-    messagingSenderId: 'REPLACE_WITH_MESSAGING_SENDER_ID',
-    projectId: 'REPLACE_WITH_PROJECT_ID',
-    storageBucket: 'REPLACE_WITH_PROJECT_ID.appspot.com',
+    apiKey: 'AIzaSyBryvLE3eQQQmadk9jJVadCQWliK6hTVRg',
+    appId: '1:525072482085:ios:e6afbcf4880066be1d24cc',
+    messagingSenderId: '525072482085',
+    projectId: 'e-response-tandag',
+    storageBucket: 'e-response-tandag.firebasestorage.app',
     iosBundleId: 'com.example.eResponseAppNemsu',
   );
 }

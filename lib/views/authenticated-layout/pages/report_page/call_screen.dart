@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:e_response_app_nemsu/views/components/press_scale.dart';
 import 'package:e_response_app_nemsu/helpers/api_url.dart';
 import 'package:e_response_app_nemsu/routes/route_manager.dart';
 import 'package:e_response_app_nemsu/services/call_api_service.dart';
@@ -65,7 +66,8 @@ class CallScreen extends StatefulWidget {
   State<CallScreen> createState() => _CallScreenState();
 }
 
-class _CallScreenState extends State<CallScreen> {
+class _CallScreenState extends State<CallScreen>
+    with SingleTickerProviderStateMixin {
   static const int _availabilityPollSeconds = 15;
   static const int _rateLimitBackoffSeconds = 45;
 
@@ -100,6 +102,9 @@ class _CallScreenState extends State<CallScreen> {
   bool _speakerOn = false;
   bool _showElapsedTimer = false;
 
+  /// Drives the concentric ripple rings shown while the call is ringing.
+  late final AnimationController _rippleCtrl;
+
   String? _lastError;
 
   /// Last availability payload when `can_connect` was true (for `twilio_dial_identity` fallback).
@@ -111,6 +116,10 @@ class _CallScreenState extends State<CallScreen> {
   @override
   void initState() {
     super.initState();
+    _rippleCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2000),
+    );
     _twilio.onLog = null;
     _callSub = _twilio.callEvents.listen(_onCallEvent);
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -402,12 +411,15 @@ class _CallScreenState extends State<CallScreen> {
       if (!mounted) return;
       setState(() => _pulseOn = !_pulseOn);
     });
+    _rippleCtrl.repeat();
   }
 
   void _stopPulse() {
     _pulseTimer?.cancel();
     _pulseTimer = null;
     _pulseOn = false;
+    _rippleCtrl.stop();
+    _rippleCtrl.reset();
   }
 
   void _startDurationIfNeeded() {
@@ -493,6 +505,7 @@ class _CallScreenState extends State<CallScreen> {
     _stopPulse();
     _callSub?.cancel();
     _twilio.onLog = null;
+    _rippleCtrl.dispose();
     super.dispose();
   }
 
@@ -532,21 +545,40 @@ class _CallScreenState extends State<CallScreen> {
             child: Column(
               children: [
                 const SizedBox(height: 12),
-                AnimatedScale(
-                  scale: _pulseOn ? 1.06 : 1.0,
-                  duration: const Duration(milliseconds: 600),
-                  curve: Curves.easeInOut,
-                  child: Semantics(
-                    label: 'Call status: $_headline',
-                    child: CircleAvatar(
-                      radius: 52,
-                      backgroundColor: Colors.white.withValues(alpha: 0.2),
-                      child: Icon(
-                        inVoice ? Icons.headset_mic_rounded : Icons.support_agent,
-                        size: 48,
-                        color: Colors.white,
+                // Avatar with concentric ripple rings while ringing.
+                SizedBox(
+                  width: 210,
+                  height: 210,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      if (_pulseTimer != null)
+                        _PulseRings(
+                          controller: _rippleCtrl,
+                          color: Colors.white.withValues(alpha: 0.28),
+                          baseRadius: 52,
+                        ),
+                      AnimatedScale(
+                        scale: _pulseOn ? 1.07 : 1.0,
+                        duration: const Duration(milliseconds: 600),
+                        curve: Curves.easeInOut,
+                        child: Semantics(
+                          label: 'Call status: $_headline',
+                          child: CircleAvatar(
+                            radius: 52,
+                            backgroundColor:
+                                Colors.white.withValues(alpha: 0.2),
+                            child: Icon(
+                              inVoice
+                                  ? Icons.headset_mic_rounded
+                                  : Icons.support_agent,
+                              size: 48,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
                       ),
-                    ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 28),
@@ -684,20 +716,24 @@ class _CallScreenState extends State<CallScreen> {
                       Semantics(
                         label: 'Hang up',
                         button: true,
-                        child: Material(
-                          color: AppColors.accent,
-                          shape: const CircleBorder(),
-                          elevation: 6,
-                          child: InkWell(
-                            customBorder: const CircleBorder(),
-                            onTap: _reconnecting ? null : _hangUpAndLeave,
-                            child: const SizedBox(
-                              width: 76,
-                              height: 76,
-                              child: Icon(
-                                Icons.call_end,
-                                color: Colors.white,
-                                size: 36,
+                        child: PressScale(
+                          scale: 0.90,
+                          enabled: !_reconnecting,
+                          child: Material(
+                            color: AppColors.accent,
+                            shape: const CircleBorder(),
+                            elevation: 6,
+                            child: InkWell(
+                              customBorder: const CircleBorder(),
+                              onTap: _reconnecting ? null : _hangUpAndLeave,
+                              child: const SizedBox(
+                                width: 76,
+                                height: 76,
+                                child: Icon(
+                                  Icons.call_end,
+                                  color: Colors.white,
+                                  size: 36,
+                                ),
                               ),
                             ),
                           ),
@@ -745,6 +781,94 @@ class _CallScreenState extends State<CallScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Ripple rings widget — three concentric expanding circles that repeat
+// while the call is in the ringing phase.
+//
+// StatefulWidget so that CurvedAnimation objects are created once in
+// initState() and cached for the widget's lifetime, rather than being
+// recreated on every build() call.
+// ---------------------------------------------------------------------------
+
+class _PulseRings extends StatefulWidget {
+  const _PulseRings({
+    required this.controller,
+    required this.color,
+    required this.baseRadius,
+  });
+
+  final AnimationController controller;
+  final Color color;
+
+  /// Radius of the inner avatar circle; rings expand outward from here.
+  final double baseRadius;
+
+  @override
+  State<_PulseRings> createState() => _PulseRingsState();
+}
+
+class _PulseRingsState extends State<_PulseRings> {
+  /// Cached CurvedAnimations — created once, disposed when widget is removed.
+  late final List<CurvedAnimation> _curves;
+
+  /// Tween-driven animations on top of the cached curves.
+  late final List<Animation<double>> _anims;
+
+  @override
+  void initState() {
+    super.initState();
+    _curves = List.generate(3, (i) {
+      final start = i / 3.0;
+      final end = (start + 0.68).clamp(0.0, 1.0);
+      return CurvedAnimation(
+        parent: widget.controller,
+        curve: Interval(start, end, curve: Curves.easeOut),
+      );
+    });
+    _anims = _curves
+        .map((c) => Tween<double>(begin: 0.0, end: 1.0).animate(c))
+        .toList();
+  }
+
+  @override
+  void dispose() {
+    for (final c in _curves) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      alignment: Alignment.center,
+      children: List.generate(3, (i) {
+        return AnimatedBuilder(
+          animation: _anims[i],
+          builder: (_, __) {
+            final v = _anims[i].value;
+            // Expand from baseRadius×2 to baseRadius×4 as v goes 0→1.
+            final diameter = widget.baseRadius * 2 * (1.0 + v);
+            // Fade from opaque to transparent as the ring expands.
+            final opacity = (1.0 - v).clamp(0.0, 1.0);
+            return Opacity(
+              opacity: opacity,
+              child: Container(
+                width: diameter,
+                height: diameter,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: widget.color, width: 2),
+                ),
+              ),
+            );
+          },
+        );
+      }),
     );
   }
 }

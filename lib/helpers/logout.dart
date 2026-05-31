@@ -185,13 +185,20 @@ class LogoutModule extends StatelessWidget {
   }
 
   static Future<void> performLogout(BuildContext context) async {
-    await TwilioService().unregisterVoice();
+    // Give Twilio voice deregistration up to 5 s — the native SDK can hang
+    // indefinitely when the access token is null/expired.  The try/catch inside
+    // unregisterVoice only catches thrown exceptions, not an infinite await.
+    await TwilioService()
+        .unregisterVoice()
+        .timeout(const Duration(seconds: 5), onTimeout: () {});
 
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.clear();
 
     if (!context.mounted) return;
-    Navigator.of(context)
+    // rootNavigator: true guarantees we reach the MaterialApp navigator
+    // regardless of how deep in the staff shell's widget tree we are called from.
+    Navigator.of(context, rootNavigator: true)
         .pushNamedAndRemoveUntil(RouteManager.loginPage, (route) => false);
   }
 

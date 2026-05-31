@@ -273,7 +273,6 @@ class _LoginPageState extends State<LoginPage> {
                                   passwordController: passwordController,
                                   onLogin: _login,
                                   onGoogleLogin: _loginWithGoogle,
-                                  onShowError: _showError,
                                 )
                               : _MobileLoginShell(
                                   compactHeight: compactHeight,
@@ -282,7 +281,6 @@ class _LoginPageState extends State<LoginPage> {
                                   passwordController: passwordController,
                                   onLogin: _login,
                                   onGoogleLogin: _loginWithGoogle,
-                                  onShowError: _showError,
                                 ),
                         ),
                       ),
@@ -306,7 +304,6 @@ class _MobileLoginShell extends StatelessWidget {
     required this.passwordController,
     required this.onLogin,
     required this.onGoogleLogin,
-    required this.onShowError,
   });
 
   final bool compactHeight;
@@ -315,7 +312,6 @@ class _MobileLoginShell extends StatelessWidget {
   final VTextFieldController passwordController;
   final Future<void> Function() onLogin;
   final Future<void> Function() onGoogleLogin;
-  final void Function(String message) onShowError;
 
   @override
   Widget build(BuildContext context) {
@@ -344,7 +340,6 @@ class _MobileLoginShell extends StatelessWidget {
               passwordController: passwordController,
               onLogin: onLogin,
               onGoogleLogin: onGoogleLogin,
-              onShowError: onShowError,
             ),
           ),
         ),
@@ -361,7 +356,6 @@ class _DesktopLoginShell extends StatelessWidget {
     required this.passwordController,
     required this.onLogin,
     required this.onGoogleLogin,
-    required this.onShowError,
   });
 
   final bool compactHeight;
@@ -370,7 +364,6 @@ class _DesktopLoginShell extends StatelessWidget {
   final VTextFieldController passwordController;
   final Future<void> Function() onLogin;
   final Future<void> Function() onGoogleLogin;
-  final void Function(String message) onShowError;
 
   @override
   Widget build(BuildContext context) {
@@ -394,7 +387,6 @@ class _DesktopLoginShell extends StatelessWidget {
               passwordController: passwordController,
               onLogin: onLogin,
               onGoogleLogin: onGoogleLogin,
-              onShowError: onShowError,
             ),
           ],
         ),
@@ -561,7 +553,6 @@ class _LoginFormCard extends StatelessWidget {
     required this.passwordController,
     required this.onLogin,
     required this.onGoogleLogin,
-    required this.onShowError,
   });
 
   final bool compactHeight;
@@ -572,7 +563,6 @@ class _LoginFormCard extends StatelessWidget {
   final VTextFieldController passwordController;
   final Future<void> Function() onLogin;
   final Future<void> Function() onGoogleLogin;
-  final void Function(String message) onShowError;
 
   @override
   Widget build(BuildContext context) {
@@ -686,35 +676,18 @@ class _LoginFormCard extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: VIconButton(
-                      onPressed:
-                          isLoading
-                              ? () {}
-                              : () async {
-                                await onGoogleLogin();
-                              },
-                      text: 'Google',
-                      icon: 'lib/assets/svg/google.svg',
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: VIconButton(
-                      onPressed:
-                          () => onShowError(
-                            'Facebook login is not implemented yet.',
-                          ),
-                      text: 'Facebook',
-                      icon: 'lib/assets/svg/facebook.svg',
-                    ),
-                  ),
-                ],
+              VIconButton(
+                onPressed:
+                    isLoading
+                        ? () {}
+                        : () async {
+                          await onGoogleLogin();
+                        },
+                text: 'Google',
+                icon: 'lib/assets/svg/google.svg',
               ),
-            ] else
-              SizedBox(height: compactHeight ? 18 : 14),
+            ],
+            SizedBox(height: compactHeight ? 18 : 20),
             Center(
               child: Wrap(
                 crossAxisAlignment: WrapCrossAlignment.center,

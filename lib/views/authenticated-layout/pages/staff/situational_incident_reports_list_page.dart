@@ -305,9 +305,12 @@ class _SituationalIncidentReportsListPageState
                 icon: const Icon(Icons.add_rounded),
                 label: const Text('New report'),
               ),
-      body: RefreshIndicator(
-        onRefresh: _load,
-        child: _buildBody(context),
+      body: SafeArea(
+        top: false,
+        child: RefreshIndicator(
+          onRefresh: _load,
+          child: _buildBody(context),
+        ),
       ),
     );
   }

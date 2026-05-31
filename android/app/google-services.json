@@ -12,7 +12,19 @@
           "package_name": "com.example.e_response_app_nemsu"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "490198227720-fs4f6vnimuep6dasqlr56nb81vprlfns.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.e_response_app_nemsu"
+          }
+        },
+        {
+          "client_id": "490198227720-9ld91f0ggs9g70bjgcd1h8j8t2h5ii6n.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyDQuIpFW5RmRrNXtO0jlt5KB9AY_I1MLbQ"
@@ -20,7 +32,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "490198227720-9ld91f0ggs9g70bjgcd1h8j8t2h5ii6n.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

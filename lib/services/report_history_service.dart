@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:e_response_app_nemsu/helpers/api_url.dart';
 import 'package:http/http.dart' as http;
@@ -46,8 +47,13 @@ class ReportHistoryService {
         'Could not load dispatch feed (${response.statusCode}). '
         'Confirm GET /$staffAggregatePath exists for staff.',
       );
+    } on SocketException {
+      return ReportHistoryResult.error(
+        'No internet connection.',
+        isOffline: true,
+      );
     } catch (e) {
-      return ReportHistoryResult.error('Error: $e');
+      return ReportHistoryResult.error('Something went wrong. Please try again.');
     }
   }
 
@@ -93,17 +99,25 @@ class ReportHistoryService {
       return ReportHistoryResult.error(
         'Failed to load reports (${response.statusCode})',
       );
+    } on SocketException {
+      return ReportHistoryResult.error(
+        'No internet connection.',
+        isOffline: true,
+      );
     } catch (e) {
-      return ReportHistoryResult.error('Error: $e');
+      return ReportHistoryResult.error('Something went wrong. Please try again.');
     }
   }
 }
 
 class ReportHistoryResult {
-  ReportHistoryResult._({this.items, this.errorMessage});
+  ReportHistoryResult._({this.items, this.errorMessage, this.isOffline = false});
 
   final List<Map<String, dynamic>>? items;
   final String? errorMessage;
+
+  /// True when the failure was caused by a missing network connection.
+  final bool isOffline;
 
   bool get isSuccess => errorMessage == null && items != null;
 
@@ -111,7 +125,7 @@ class ReportHistoryResult {
     return ReportHistoryResult._(items: items);
   }
 
-  factory ReportHistoryResult.error(String message) {
-    return ReportHistoryResult._(errorMessage: message);
+  factory ReportHistoryResult.error(String message, {bool isOffline = false}) {
+    return ReportHistoryResult._(errorMessage: message, isOffline: isOffline);
   }
 }

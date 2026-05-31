@@ -57,14 +57,17 @@ class _WebViewScreenState extends State<WebViewScreen> {
           ),
         ),
       ),
-      body: Stack(
-        children: [
-          WebViewWidget(controller: controller),
-          if (isLoading) // Show loading indicator while the page is loading
-            const Center(
-              child: CircularProgressIndicator(),
-            ),
-        ],
+      body: SafeArea(
+        top: false,
+        child: Stack(
+          children: [
+            WebViewWidget(controller: controller),
+            if (isLoading) // Show loading indicator while the page is loading
+              const Center(
+                child: CircularProgressIndicator(),
+              ),
+          ],
+        ),
       ),
     );
   }

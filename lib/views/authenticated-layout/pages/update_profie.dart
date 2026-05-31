@@ -121,11 +121,13 @@ class _ProfilePageState extends State<ProfilePage> {
         title: const Text('Profile'),
       ),
       backgroundColor: AppColors.primary,
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            // Profile Picture and Name Section
-            Container(
+      body: SafeArea(
+        top: false,
+        child: SingleChildScrollView(
+          child: Column(
+            children: [
+              // Profile Picture and Name Section
+              Container(
               padding: const EdgeInsets.symmetric(vertical: 20),
               color: AppColors.primary,
               child: Column(
@@ -243,6 +245,7 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
           ],
         ),
+      ),
       ),
     );
   }

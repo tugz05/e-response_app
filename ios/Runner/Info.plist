@@ -45,5 +45,20 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<!-- Google Sign-In: iOS OAuth 2.0 client ID -->
+	<key>GIDClientID</key>
+	<string>490198227720-k36qvprsguglvghp6cmi5b6nls57k40s.apps.googleusercontent.com</string>
+	<!-- Google Sign-In: reversed client ID used as the OAuth redirect URL scheme -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.490198227720-k36qvprsguglvghp6cmi5b6nls57k40s</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

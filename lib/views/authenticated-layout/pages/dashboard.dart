@@ -18,7 +18,8 @@ class Dashboard extends StatefulWidget {
   State<Dashboard> createState() => _DashboardState();
 }
 
-class _DashboardState extends State<Dashboard> {
+class _DashboardState extends State<Dashboard>
+    with TickerProviderStateMixin {
   String userName = 'Responder';
   String greeting = 'Good Morning';
   String? _selfiePath;
@@ -27,6 +28,7 @@ class _DashboardState extends State<Dashboard> {
   final ReportHistoryService _reportHistoryService = ReportHistoryService();
   bool _reportsLoading = false;
   String? _reportsError;
+  bool _reportsIsOffline = false;
   List<Map<String, dynamic>> _homeReports = [];
 
   /// Bumps on pull-to-refresh so dashboard feeds remount and refetch from the API.
@@ -36,12 +38,74 @@ class _DashboardState extends State<Dashboard> {
   String? _locationText;
   String? _locationError;
 
+  // ---------------------------------------------------------------------------
+  // Single entrance animation — 7 sections staggered via Interval curves.
+  // Replaces 7 individual AnimationControllers (_FadeSlideIn), reducing
+  // Ticker overhead from 7 down to 1.
+  // ---------------------------------------------------------------------------
+  late final AnimationController _entranceCtrl;
+  // Pre-built opacity and slide animations (indices 0–6 match build() order).
+  final List<CurvedAnimation> _curvedAnims = [];
+  final List<Animation<double>> _sectionOpacity = [];
+  final List<Animation<Offset>> _sectionSlide = [];
+
+  static const List<int> _sectionDelaysMs = [0, 80, 160, 230, 260, 310, 340];
+  static const double _totalMs = 700.0;
+  static const double _sectionDurationMs = 420.0;
+
   @override
   void initState() {
     super.initState();
+    _buildEntranceAnimations();
     _loadUserName();
     _updateGreeting();
     _loadLocation();
+  }
+
+  void _buildEntranceAnimations() {
+    _entranceCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 700),
+    );
+
+    for (final delayMs in _sectionDelaysMs) {
+      final start = delayMs / _totalMs;
+      final end = ((delayMs + _sectionDurationMs) / _totalMs).clamp(0.0, 1.0);
+
+      final opacityCurve = CurvedAnimation(
+        parent: _entranceCtrl,
+        curve: Interval(start, end, curve: Curves.easeOut),
+      );
+      final slideCurve = CurvedAnimation(
+        parent: _entranceCtrl,
+        curve: Interval(start, end, curve: Curves.easeOutCubic),
+      );
+      final slide = Tween<Offset>(
+        begin: const Offset(0, 0.10),
+        end: Offset.zero,
+      ).animate(slideCurve);
+
+      _curvedAnims
+        ..add(opacityCurve)
+        ..add(slideCurve);
+      _sectionOpacity.add(opacityCurve);
+      _sectionSlide.add(slide);
+    }
+
+    // Kick off after the first frame so the screen is laid out first.
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) {
+      if (mounted) _entranceCtrl.forward();
+    });
+  }
+
+  @override
+  void dispose() {
+    _entranceCtrl.dispose();
+    for (final a in _curvedAnims) {
+      a.dispose();
+    }
+    super.dispose();
   }
 
   Future<void> _loadUserName() async {
@@ -83,6 +147,7 @@ class _DashboardState extends State<Dashboard> {
       setState(() {
         _reportsLoading = false;
         _reportsError = result.errorMessage;
+        _reportsIsOffline = result.isOffline;
         _homeReports = [];
       });
       return;
@@ -92,6 +157,7 @@ class _DashboardState extends State<Dashboard> {
     setState(() {
       _reportsLoading = false;
       _reportsError = null;
+      _reportsIsOffline = false;
       _homeReports = items.take(3).toList();
     });
   }
@@ -425,14 +491,10 @@ class _DashboardState extends State<Dashboard> {
               ),
             )
           else if (_reportsError != null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
-              child: Text(
-                _reportsError!,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: AppColors.accent,
-                ),
-              ),
+            _ReportsErrorState(
+              isOffline: _reportsIsOffline,
+              message: _reportsError!,
+              onRetry: _loadReportHistory,
             )
           else if (_homeReports.isEmpty)
             Padding(
@@ -485,72 +547,121 @@ class _DashboardState extends State<Dashboard> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
           children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                VerificationSelfieAvatar(
-                  displayName: userName,
-                  selfiePath: _selfiePath,
-                  radius: 26,
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '$greeting, $userName',
-                        style: theme.textTheme.titleLarge?.copyWith(
-                          color: AppColors.textPrimary,
-                          fontWeight: FontWeight.w800,
-                          height: 1.2,
-                        ),
+            // Section 0 — greeting row
+            FadeTransition(
+              opacity: _sectionOpacity[0],
+              child: SlideTransition(
+                position: _sectionSlide[0],
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    VerificationSelfieAvatar(
+                      displayName: userName,
+                      selfiePath: _selfiePath,
+                      radius: 26,
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '$greeting, $userName',
+                            style: theme.textTheme.titleLarge?.copyWith(
+                              color: AppColors.textPrimary,
+                              fontWeight: FontWeight.w800,
+                              height: 1.2,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            _todayLabel(),
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: AppColors.textMuted,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        _todayLabel(),
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: AppColors.textMuted,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
             const SizedBox(height: 14),
-            ShowCard(
-              locationSection: _heroLocationBanner(theme),
-              appRole: _appRole,
+            // Section 1 — hero card
+            FadeTransition(
+              opacity: _sectionOpacity[1],
+              child: SlideTransition(
+                position: _sectionSlide[1],
+                child: ShowCard(
+                  locationSection: _heroLocationBanner(theme),
+                  appRole: _appRole,
+                ),
+              ),
             ),
             const SizedBox(height: 18),
-            _homeReportHistorySection(theme),
+            // Section 2 — recent reports
+            FadeTransition(
+              opacity: _sectionOpacity[2],
+              child: SlideTransition(
+                position: _sectionSlide[2],
+                child: _homeReportHistorySection(theme),
+              ),
+            ),
             const SizedBox(height: 18),
-            ContentSectionHeader(
-              title: 'Preparedness',
-              trailing: Icon(
-                Icons.health_and_safety_outlined,
-                color: AppColors.primary.withValues(alpha: 0.45),
-                size: 22,
+            // Section 3 — preparedness header
+            FadeTransition(
+              opacity: _sectionOpacity[3],
+              child: SlideTransition(
+                position: _sectionSlide[3],
+                child: ContentSectionHeader(
+                  title: 'Preparedness',
+                  trailing: Icon(
+                    Icons.health_and_safety_outlined,
+                    color: AppColors.primary.withValues(alpha: 0.45),
+                    size: 22,
+                  ),
+                ),
               ),
             ),
             const SizedBox(height: 10),
-            ListTipsDashboard(
-              key: ValueKey<int>(_feedRefreshGeneration),
+            // Section 4 — preparedness feed
+            FadeTransition(
+              opacity: _sectionOpacity[4],
+              child: SlideTransition(
+                position: _sectionSlide[4],
+                child: ListTipsDashboard(
+                  key: ValueKey<int>(_feedRefreshGeneration),
+                ),
+              ),
             ),
             const SizedBox(height: 18),
-            ContentSectionHeader(
-              title: 'Latest news',
-              trailing: Icon(
-                Icons.newspaper_rounded,
-                color: AppColors.primary.withValues(alpha: 0.45),
-                size: 22,
+            // Section 5 — news header
+            FadeTransition(
+              opacity: _sectionOpacity[5],
+              child: SlideTransition(
+                position: _sectionSlide[5],
+                child: ContentSectionHeader(
+                  title: 'Latest news',
+                  trailing: Icon(
+                    Icons.newspaper_rounded,
+                    color: AppColors.primary.withValues(alpha: 0.45),
+                    size: 22,
+                  ),
+                ),
               ),
             ),
             const SizedBox(height: 10),
-            ListNewsDashboard(
-              key: ValueKey<int>(_feedRefreshGeneration),
+            // Section 6 — news feed
+            FadeTransition(
+              opacity: _sectionOpacity[6],
+              child: SlideTransition(
+                position: _sectionSlide[6],
+                child: ListNewsDashboard(
+                  key: ValueKey<int>(_feedRefreshGeneration),
+                ),
+              ),
             ),
           ],
         ),
@@ -558,3 +669,80 @@ class _DashboardState extends State<Dashboard> {
     );
   }
 }
+
+// ---------------------------------------------------------------------------
+// Compact error state for the Recent Reports card.
+// Shows a distinct offline vs server-error appearance.
+// ---------------------------------------------------------------------------
+
+class _ReportsErrorState extends StatelessWidget {
+  const _ReportsErrorState({
+    required this.isOffline,
+    required this.message,
+    required this.onRetry,
+  });
+
+  final bool isOffline;
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final color = isOffline ? AppColors.warning : AppColors.accent;
+    final icon = isOffline ? Icons.wifi_off_rounded : Icons.cloud_off_rounded;
+    final title = isOffline ? 'No connection' : 'Could not load';
+    final body = isOffline
+        ? 'Check your internet connection and try again.'
+        : message;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+      child: Column(
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(icon, color: color, size: 24),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            title,
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            body,
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: AppColors.textMuted,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            height: 36,
+            child: FilledButton.icon(
+              onPressed: onRetry,
+              style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 18),
+                textStyle: theme.textTheme.labelMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              icon: const Icon(Icons.refresh_rounded, size: 16),
+              label: const Text('Try again'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+

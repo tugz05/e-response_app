@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:e_response_app_nemsu/helpers/api_url.dart';
 import 'package:e_response_app_nemsu/theme/app_theme.dart';
@@ -20,6 +21,8 @@ class ListTipsDashboard extends StatefulWidget {
 class _ListTipsDashboardState extends State<ListTipsDashboard> {
   List<dynamic> _tips = [];
   bool _isLoading = true;
+  String? _error;
+  bool _isOffline = false;
 
   @override
   void initState() {
@@ -28,32 +31,47 @@ class _ListTipsDashboardState extends State<ListTipsDashboard> {
   }
 
   Future<void> fetchTips() async {
+    if (!mounted) return;
+    setState(() {
+      _isLoading = true;
+      _error = null;
+      _isOffline = false;
+    });
+
     final Uri url = Uri.parse(ApiUrl.getServiceUrl(_kPreparednessListPath));
-    if (mounted) {
-      setState(() => _isLoading = true);
-    }
 
     try {
-      final response = await http.get(url);
+      final response = await http.get(url).timeout(const Duration(seconds: 15));
+
+      if (!mounted) return;
+
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        if (!mounted) {
-          return;
-        }
         setState(() {
           _tips = data['data'] ?? [];
+          _isLoading = false;
         });
-      }
-    } catch (_) {
-      if (!mounted) {
-        return;
-      }
-    } finally {
-      if (mounted) {
+      } else {
         setState(() {
+          _error =
+              'The server returned an error (${response.statusCode}). '
+              'Pull down to refresh.';
           _isLoading = false;
         });
       }
+    } on SocketException {
+      if (!mounted) return;
+      setState(() {
+        _isOffline = true;
+        _error = 'Check your internet connection and tap "Try again".';
+        _isLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'Could not load preparedness content. Pull down to refresh.';
+        _isLoading = false;
+      });
     }
   }
 
@@ -66,12 +84,19 @@ class _ListTipsDashboardState extends State<ListTipsDashboard> {
           scrollDirection: Axis.horizontal,
           itemCount: 3,
           separatorBuilder: (_, __) => const SizedBox(width: 12),
-          itemBuilder:
-              (_, __) => const SizedBox(
-                width: 252,
-                child: ContentLoadingList(compact: true, itemCount: 1),
-              ),
+          itemBuilder: (_, __) => const SizedBox(
+            width: 252,
+            child: ContentLoadingList(compact: true, itemCount: 1),
+          ),
         ),
+      );
+    }
+
+    if (_error != null) {
+      return ContentErrorState(
+        isOffline: _isOffline,
+        message: _error!,
+        onRetry: fetchTips,
       );
     }
 
@@ -98,7 +123,6 @@ class _ListTipsDashboardState extends State<ListTipsDashboard> {
           final String dateLabel = contentDateLabel(
             tip['created_at']?.toString(),
           );
-
           final tipMap = Map<String, dynamic>.from(tip as Map);
           final String? imageUrl = contentItemImageUrl(tipMap);
 
@@ -106,10 +130,9 @@ class _ListTipsDashboardState extends State<ListTipsDashboard> {
             width: 252,
             child: ContentFeedCard(
               title: title.isEmpty ? 'Untitled article' : title,
-              excerpt:
-                  excerpt.isEmpty
-                      ? 'Open to read the full preparedness guidance.'
-                      : excerpt,
+              excerpt: excerpt.isEmpty
+                  ? 'Open to read the full preparedness guidance.'
+                  : excerpt,
               dateLabel: dateLabel,
               imageUrl: imageUrl,
               icon: Icons.health_and_safety_outlined,
@@ -122,9 +145,8 @@ class _ListTipsDashboardState extends State<ListTipsDashboard> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder:
-                        (context) =>
-                            WebViewScreen(url: cleanedUrl, titleText: title),
+                    builder: (context) =>
+                        WebViewScreen(url: cleanedUrl, titleText: title),
                   ),
                 );
               },

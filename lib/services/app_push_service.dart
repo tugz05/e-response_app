@@ -385,7 +385,25 @@ class AppPushService {
     if (kIsWeb || !(Platform.isAndroid || Platform.isIOS)) return;
     try {
       final messaging = FirebaseMessaging.instance;
-      final token = newToken ?? await messaging.getToken();
+
+      String? token = newToken;
+      if (token == null) {
+        // On iOS, Firebase needs an APNS token before it can mint an FCM token.
+        // Simulators never get an APNS token, and physical devices may not have
+        // one yet immediately after launch.  Check first and skip silently so we
+        // don't spam the log on every startup.
+        if (Platform.isIOS) {
+          final apns = await messaging.getAPNSToken();
+          if (apns == null || apns.isEmpty) {
+            debugPrint(
+              '[AppPush] skipping FCM sync — APNS token not yet available '
+              '(simulator or not yet registered with APNs).',
+            );
+            return;
+          }
+        }
+        token = await messaging.getToken();
+      }
       if (token == null || token.isEmpty) return;
 
       final prefs = await SharedPreferences.getInstance();
@@ -406,6 +424,11 @@ class AppPushService {
       );
       debugPrint('[AppPush] device/fcm-token ← HTTP ${resp.statusCode}');
     } catch (e) {
+      final msg = e.toString();
+      if (msg.contains('apns-token-not-set') || msg.contains('apns_token')) {
+        // Suppress — APNS not available (simulator or APNs not yet registered).
+        return;
+      }
       debugPrint('[AppPush] device/fcm-token sync failed: $e');
     }
   }

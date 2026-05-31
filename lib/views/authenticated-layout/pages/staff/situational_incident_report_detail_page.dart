@@ -186,14 +186,15 @@ class _SituationalIncidentReportDetailPageState
           ],
         ],
       ),
-      body:
-          _loading
-              ? const Center(child: CircularProgressIndicator())
-              : _error != null
-              ? _ErrorState(message: _error!, onRetry: _load)
-              : _report == null
-              ? _ErrorState(message: 'No data', onRetry: _load)
-              : Stack(
+      body: SafeArea(
+        top: false,
+        child: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : _error != null
+            ? _ErrorState(message: _error!, onRetry: _load)
+            : _report == null
+            ? _ErrorState(message: 'No data', onRetry: _load)
+            : Stack(
                 children: [
                   RefreshIndicator(
                     onRefresh: _load,
@@ -398,6 +399,7 @@ class _SituationalIncidentReportDetailPageState
                     ),
                 ],
               ),
+      ),
     );
   }
 

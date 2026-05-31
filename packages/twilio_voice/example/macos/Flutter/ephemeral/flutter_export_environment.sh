@@ -1,7 +1,8 @@
 #!/bin/sh
 # This is a generated file; do not edit or check into version control.
-export "FLUTTER_ROOT=C:\Users\virgi\flutter"
-export "FLUTTER_APPLICATION_PATH=C:\Flutter Projects\e_response_app_nemsu\packages\twilio_voice\example"
+export "FLUTTER_ROOT=/Users/noobtugz/develop/flutter"
+export "FLUTTER_APPLICATION_PATH=/Users/noobtugz/Flutter Projects/e_response_app_nemsu/packages/twilio_voice/example"
+export "FLUTTER_FRAMEWORK_SWIFT_PACKAGE_PATH=/Users/noobtugz/Flutter Projects/e_response_app_nemsu/packages/twilio_voice/example/macos/Flutter/ephemeral/Packages/.packages/FlutterFramework"
 export "COCOAPODS_PARALLEL_CODE_SIGN=true"
 export "FLUTTER_BUILD_DIR=build"
 export "FLUTTER_BUILD_NAME=1.0.0"

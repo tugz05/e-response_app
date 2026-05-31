@@ -37,19 +37,42 @@ class TipsPage extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.all(4),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      // Sunken tray — slightly blue-tinted so the white pill
+                      // has contrast without a harsh border.
+                      color: AppColors.backgroundAlt,
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: AppColors.border),
                     ),
                     child: TabBar(
+                      // White pill with a soft shadow — "lifts" above the tray.
                       indicator: BoxDecoration(
-                        color: AppColors.primary,
+                        color: Colors.white,
                         borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.shadowSoft,
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
                       ),
-                      labelColor: Colors.white,
-                      unselectedLabelColor: AppColors.primary,
+                      indicatorSize: TabBarIndicatorSize.tab,
+                      // Active label: navy bold. Inactive: muted regular.
+                      labelColor: AppColors.primary,
+                      unselectedLabelColor: AppColors.textMuted,
+                      labelStyle: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13.5,
+                      ),
+                      unselectedLabelStyle: const TextStyle(
+                        fontWeight: FontWeight.w500,
+                        fontSize: 13.5,
+                      ),
                       dividerColor: Colors.transparent,
-                      labelStyle: const TextStyle(fontWeight: FontWeight.w700),
+                      // Suppress the default splash so it looks like a clean
+                      // segmented control, not a button bar.
+                      overlayColor:
+                          const WidgetStatePropertyAll(Colors.transparent),
+                      splashBorderRadius: BorderRadius.circular(12),
                       tabs: const [
                         Tab(text: 'Preparedness'),
                         Tab(text: 'Safety Tips'),

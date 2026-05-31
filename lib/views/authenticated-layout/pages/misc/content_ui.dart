@@ -495,11 +495,15 @@ class ContentEmptyState extends StatelessWidget {
     required this.title,
     required this.message,
     required this.icon,
+    this.onRetry,
   });
 
   final String title;
   final String message;
   final IconData icon;
+
+  /// When provided a "Try again" button is shown below the message.
+  final VoidCallback? onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -511,12 +515,12 @@ class ContentEmptyState extends StatelessWidget {
         child: Column(
           children: [
             Container(
-                width: 54,
-                height: 54,
-                decoration: BoxDecoration(
+              width: 54,
+              height: 54,
+              decoration: BoxDecoration(
                 color: AppColors.primarySoft,
-                  borderRadius: BorderRadius.circular(18),
-                ),
+                borderRadius: BorderRadius.circular(18),
+              ),
               child: Icon(icon, color: AppColors.primary),
             ),
             const SizedBox(height: 14),
@@ -534,8 +538,105 @@ class ContentEmptyState extends StatelessWidget {
                 color: AppColors.textMuted,
               ),
             ),
+            if (onRetry != null) ...[
+              const SizedBox(height: 14),
+              TextButton.icon(
+                onPressed: onRetry,
+                icon: const Icon(Icons.refresh_rounded, size: 18),
+                label: const Text('Try again'),
+              ),
+            ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Dedicated error-state widget for network / server failures.
+///
+/// Shows a contextual icon (offline vs server error), a title, a message, and
+/// a prominent "Try again" button.  Optionally accepts [isOffline] to switch
+/// the icon and title copy.
+class ContentErrorState extends StatelessWidget {
+  const ContentErrorState({
+    super.key,
+    required this.onRetry,
+    this.message =
+        'Something went wrong while loading this content. Please try again.',
+    this.isOffline = false,
+    this.compact = false,
+  });
+
+  final VoidCallback onRetry;
+  final String message;
+
+  /// When true, shows "No internet connection" copy and a wifi-off icon.
+  final bool isOffline;
+
+  /// Renders a smaller, card-less version suitable for inline sections.
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final icon = isOffline ? Icons.wifi_off_rounded : Icons.cloud_off_rounded;
+    final title = isOffline ? 'No internet connection' : 'Unable to load';
+    final color = isOffline ? AppColors.warning : AppColors.accent;
+
+    Widget content = Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 56,
+          height: 56,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Icon(icon, color: color, size: 28),
+        ),
+        const SizedBox(height: 14),
+        Text(
+          title,
+          textAlign: TextAlign.center,
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          message,
+          textAlign: TextAlign.center,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: AppColors.textMuted,
+            height: 1.4,
+          ),
+        ),
+        const SizedBox(height: 16),
+        FilledButton.icon(
+          onPressed: onRetry,
+          style: FilledButton.styleFrom(
+            backgroundColor: AppColors.primary,
+            minimumSize: const Size(130, 40),
+          ),
+          icon: const Icon(Icons.refresh_rounded, size: 18),
+          label: const Text('Try again'),
+        ),
+      ],
+    );
+
+    if (compact) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: content,
+      );
+    }
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 22, 20, 22),
+        child: content,
       ),
     );
   }
