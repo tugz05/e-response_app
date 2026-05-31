@@ -142,29 +142,53 @@ class TwilioService {
     }
   }
 
-  /// FCM (Android) / FCM→APNs (iOS) token for Twilio `Voice.register`, **not** the Voice JWT.
+  /// FCM (Android) / APNs-backed FCM (iOS) token for Twilio `Voice.register`.
+  /// On iOS, Firebase requires the APNs token to be available before `getToken()`
+  /// will succeed — we retry up to ~5 s waiting for the APNs token first.
   Future<String?> _voiceMessagingDeviceToken() async {
     if (kIsWeb) return null;
     if (!(Platform.isAndroid || Platform.isIOS)) return null;
 
     final firebaseReady = await _ensureFirebaseApp();
-    if (!firebaseReady) {
-      return null;
-    }
+    if (!firebaseReady) return null;
 
     try {
+      final messaging = FirebaseMessaging.instance;
+
       if (Platform.isAndroid) {
         await Permission.notification.request();
       }
-      final messaging = FirebaseMessaging.instance;
+
       await messaging.requestPermission(
         alert: true,
         badge: true,
         sound: true,
       );
+
+      if (Platform.isIOS) {
+        // APNs token must be set before getToken() can return an FCM token.
+        // Retry for up to 5 seconds (10 × 500 ms).
+        String? apnsToken;
+        for (var i = 0; i < 10 && (apnsToken == null || apnsToken.isEmpty); i++) {
+          apnsToken = await messaging.getAPNSToken();
+          if (apnsToken == null || apnsToken.isEmpty) {
+            await Future.delayed(const Duration(milliseconds: 500));
+          }
+        }
+        if (apnsToken == null || apnsToken.isEmpty) {
+          _log(
+            '[TwilioService] iOS: APNs token not available after retries. '
+            'Ensure Push Notifications & VoIP capabilities are enabled in Xcode '
+            'Signing & Capabilities and a valid provisioning profile is used.',
+          );
+          return null;
+        }
+        _log('[TwilioService] iOS APNs token obtained (${apnsToken.length} chars).');
+      }
+
       final token = await messaging.getToken();
       if (token != null && token.isNotEmpty) {
-        _log('[TwilioService] Messaging token acquired (${token.length} chars).');
+        _log('[TwilioService] FCM token acquired (${token.length} chars).');
       }
       return token;
     } catch (e) {
@@ -332,15 +356,18 @@ class TwilioService {
 
     try {
       final messagingToken = await _voiceMessagingDeviceToken();
-      final deviceToken =
-          (messagingToken != null && messagingToken.isNotEmpty)
-              ? messagingToken
-              : jwt;
+      // On iOS the native plugin obtains its own VoIP push token via PKPushRegistry;
+      // passing the JWT as device token would corrupt the registration.
+      // On Android, fall back to the JWT so at least the access token path works.
+      final deviceToken = (messagingToken != null && messagingToken.isNotEmpty)
+          ? messagingToken
+          : (Platform.isAndroid ? jwt : '');
       if (messagingToken == null || messagingToken.isEmpty) {
         _log(
-          '[TwilioService] ⚠️ No FCM token — Twilio cannot push incoming call invites. '
-          'Add Firebase (google-services.json + com.google.gms.google-services), '
-          'then rebuild. Using JWT placeholder will not ring staff devices.',
+          '[TwilioService] ⚠️ No FCM/APNs token — incoming call push notifications '
+          'will not work. ${Platform.isIOS ? 'Enable Push Notifications + Voice over IP '
+          'in Xcode Signing & Capabilities, then rebuild.' : 'Verify google-services.json '
+          'and com.google.gms.google-services are configured.'}',
         );
       }
 

@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:e_response_app_nemsu/controllers/VTextFieldController.dart';
 import 'package:e_response_app_nemsu/helpers/account_session.dart';
 import 'package:e_response_app_nemsu/helpers/app_mobile_role.dart';
@@ -14,6 +17,7 @@ import 'package:e_response_app_nemsu/views/components/VTextField.dart';
 import 'package:e_response_app_nemsu/views/components/VlLogo.dart';
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -28,12 +32,26 @@ class _LoginPageState extends State<LoginPage> {
   final LoginService _loginService = LoginService();
 
   bool _isLoading = false;
+  bool _isOffline = false;
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
 
   @override
   void initState() {
     super.initState();
     _redirectIfAuthenticated();
+    _initConnectivity();
   }
+
+  Future<void> _initConnectivity() async {
+    final initial = await Connectivity().checkConnectivity();
+    if (mounted) setState(() => _isOffline = _noneConnected(initial));
+    _connectivitySub = Connectivity().onConnectivityChanged.listen((results) {
+      if (mounted) setState(() => _isOffline = _noneConnected(results));
+    });
+  }
+
+  static bool _noneConnected(List<ConnectivityResult> r) =>
+      r.isEmpty || r.every((c) => c == ConnectivityResult.none);
 
   Future<void> _redirectIfAuthenticated() async {
     if (!mounted) {
@@ -44,9 +62,33 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   void dispose() {
+    _connectivitySub?.cancel();
     emailController.dispose();
     passwordController.dispose();
     super.dispose();
+  }
+
+  void _showOfflineCallSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      useRootNavigator: true,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _OfflineCallSheet(onCall: _callNumber),
+    );
+  }
+
+  Future<void> _callNumber(String number) async {
+    final uri = Uri(scheme: 'tel', path: number);
+    try {
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri);
+      } else {
+        _showError('Phone calling is not supported on this device.');
+      }
+    } catch (_) {
+      _showError('Could not open the dialer. Call $number manually.');
+    }
   }
 
   Future<void> _login() async {
@@ -284,6 +326,31 @@ class _LoginPageState extends State<LoginPage> {
                                 ),
                         ),
                       ),
+                    ),
+                  ),
+                  // ── Offline emergency call banner ─────────────────────────
+                  Positioned(
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 320),
+                      transitionBuilder: (child, anim) => SlideTransition(
+                        position: Tween<Offset>(
+                          begin: const Offset(0, 1),
+                          end: Offset.zero,
+                        ).animate(CurvedAnimation(
+                          parent: anim,
+                          curve: Curves.easeOutCubic,
+                        )),
+                        child: child,
+                      ),
+                      child: _isOffline
+                          ? _OfflineCallBanner(
+                              key: const ValueKey('banner'),
+                              onTap: _showOfflineCallSheet,
+                            )
+                          : const SizedBox.shrink(key: ValueKey('hidden')),
                     ),
                   ),
                 ],
@@ -733,6 +800,321 @@ class _AmbientBubble extends StatelessWidget {
       width: size,
       height: size,
       decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Offline emergency-call widgets
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Persistent red strip at the bottom of the screen, visible only when offline.
+class _OfflineCallBanner extends StatelessWidget {
+  const _OfflineCallBanner({super.key, required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        decoration: const BoxDecoration(
+          color: Color(0xFFBF1C1C),
+          boxShadow: [
+            BoxShadow(
+              color: Color(0x55000000),
+              blurRadius: 10,
+              offset: Offset(0, -3),
+            ),
+          ],
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+        child: SafeArea(
+          top: false,
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.18),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.wifi_off_rounded,
+                  color: Colors.white,
+                  size: 17,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'No internet connection',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                        height: 1.2,
+                      ),
+                    ),
+                    Text(
+                      'Tap to call the emergency hotline',
+                      style: TextStyle(
+                        color: Color(0xCCFFFFFF),
+                        fontSize: 11.5,
+                        height: 1.3,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.30),
+                  ),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.call_rounded, color: Colors.white, size: 14),
+                    SizedBox(width: 5),
+                    Text(
+                      'Call now',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Bottom sheet shown when the offline banner is tapped.
+/// Presents Globe and Smart numbers for the user to choose from.
+class _OfflineCallSheet extends StatelessWidget {
+  const _OfflineCallSheet({required this.onCall});
+
+  final Future<void> Function(String number) onCall;
+
+  static const _globeNumber = '09567395623';
+  static const _smartNumber = '09072993793';
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final bottomPad = MediaQuery.paddingOf(context).bottom;
+
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+      ),
+      padding: EdgeInsets.fromLTRB(24, 18, 24, bottomPad + 28),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Handle bar
+          Center(
+            child: Container(
+              width: 38,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.border,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 22),
+
+          // Header
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(11),
+                decoration: BoxDecoration(
+                  color: AppColors.accent.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Icon(
+                  Icons.wifi_off_rounded,
+                  color: AppColors.accent,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'No Internet Connection',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    Text(
+                      'Select a telecom to call the emergency hotline.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: AppColors.textMuted,
+                        height: 1.3,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 20),
+          const Divider(height: 1),
+          const SizedBox(height: 18),
+
+          Text(
+            'EMERGENCY HOTLINES',
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: AppColors.textMuted,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.1,
+            ),
+          ),
+          const SizedBox(height: 14),
+
+          _OfflineCallOption(
+            telecom: 'Globe',
+            number: _globeNumber,
+            color: const Color(0xFF0B4BB5),
+            onTap: () => onCall(_globeNumber),
+          ),
+          const SizedBox(height: 10),
+          _OfflineCallOption(
+            telecom: 'Smart',
+            number: _smartNumber,
+            color: const Color(0xFFCC2020),
+            onTap: () => onCall(_smartNumber),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A single telecom call option card inside [_OfflineCallSheet].
+class _OfflineCallOption extends StatelessWidget {
+  const _OfflineCallOption({
+    required this.telecom,
+    required this.number,
+    required this.color,
+    required this.onTap,
+  });
+
+  final String telecom;
+  final String number;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Material(
+      color: color.withValues(alpha: 0.06),
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              // Telecom icon badge
+              Container(
+                width: 50,
+                height: 50,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(
+                  Icons.cell_tower_rounded,
+                  color: color,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 14),
+
+              // Name + number
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      telecom,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        color: color,
+                        letterSpacing: 0.1,
+                      ),
+                    ),
+                    Text(
+                      number,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: AppColors.textPrimary,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // Call button
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(11),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.call_rounded, color: Colors.white, size: 16),
+                    SizedBox(width: 6),
+                    Text(
+                      'Call',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
